@@ -1,0 +1,114 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © ChartPrime
+
+//@version=5
+indicator("High-Low Cloud Trend [ChartPrime]", overlay = true, max_labels_count = 500)
+
+
+// --------------------------------------------------------------------------------------------------------------------}
+// 𝙐𝙎𝙀𝙍 𝙄𝙉𝙋𝙐𝙏𝙎
+// --------------------------------------------------------------------------------------------------------------------{
+len = input.int(35, title="Lookback Period")
+
+bool mean_rev = input.bool(true, "Mean Reversion Points")
+bool show_p_v = input.bool(false, "Volume/Price")
+
+// Colors for trend identification
+color_up = color.aqua
+color_dn = color.orange
+
+
+// --------------------------------------------------------------------------------------------------------------------}
+// 𝙄𝙉𝘿𝙄𝘾𝘼𝙏𝙊𝙍 𝘾𝘼𝙇𝘾𝙐𝙇𝘼𝙏𝙄𝙊𝙉𝙎
+// --------------------------------------------------------------------------------------------------------------------{
+// Draw Label Function
+drawLabel(_pivot, _style, _color, _textColor, h_l) =>
+    src = (h_l ? high[1] : low[1])
+    if _pivot
+        label.new(bar_index[1], src, str.tostring(src, show_p_v ? format.volume : format.mintick),
+                 style =_style, color =_color, textcolor =_textColor, size = size.small)
+
+
+// Calculate the highest and lowest over the lookback period
+highest  = ta.highest(len)  // Highest high over the lookback period
+lowest   = ta.lowest(len)  // Lowest low over the lookback period
+
+// Calculate the highest and lowest over a shorter period (1/3 of the original period)
+highest1 = ta.highest(len / 4)  // Highest high over the shortened lookback period
+lowest1  = ta.lowest(len / 4)  // Lowest low over the shortened lookback period
+
+// Initialize the 'value' variable using 'var' to retain its value across bars
+var float value = na
+
+// Logic to update the 'value' variable based on certain conditions
+switch
+    low  == lowest  => value := highest  // Set 'value' to 'highest' when the current low equals the lowest
+    high == highest => value := lowest  // Set 'value' to 'lowest' when the current high equals the highest
+    => value := nz(value[1])           // Retain the previous 'value' if neither condition is met
+
+// Determine the 'band' value based on the relationship between 'close' and 'value'
+band  = close > value ? lowest : highest
+band1 = close > value ? lowest1 : highest1
+
+// Determine the color based on the relationship between 'close' and 'value'
+color = close > value ? color_up : color_dn  // Use 'color_up' for upward trends and 'color_dn' for downward trends
+
+
+
+// --------------------------------------------------------------------------------------------------------------------}
+// 𝙑𝙄𝙎𝙐𝘼𝙇𝙄𝙕𝘼𝙏𝙄𝙊𝙉
+// --------------------------------------------------------------------------------------------------------------------{
+
+// Plot the 'band' value with a line break if there's a cross between 'close' and 'band'
+p1 = plot(ta.cross(close, band) ? na : band,
+              title     = "Band",
+              color     = color,
+              linewidth = 1,
+              style     = plot.style_linebr)
+
+// Plot 'band1', which is based on the shorter lookback period, with a transparent color
+p2 = plot(band1,
+             title      = "Band1",
+             color      = color.new(chart.fg_color, 90),
+             linewidth  = 1,
+             style      = plot.style_linebr)
+
+// Plot a diamond shape at the 'band' value when there's a cross between 'close' and 'band'
+plotshape(ta.cross(close, band) ? band : na,
+             location = location.absolute,
+             style    = shape.diamond,
+             color    = color,
+             size     = size.tiny,
+             offset   = 1)
+
+
+// Fill the area between 'p1' and 'p2' (between 'band' and 'band1') using the gradient color
+fill(p1, p2, band1, band, color.new(color, 95), color.new(color, 50), fillgaps = true)
+
+// Mean Reversion Conditions
+mean_rev_dn = ta.crossunder(high, band1[1]) and band1[1] == high[1] and high != band1 and not ta.cross(close, band) and band[1] == band
+mean_rev_up = ta.crossover(low, band1[1]) and band1[1] == low[1]  and low  != band1 and not ta.cross(close, band) and band[1] == band
+
+
+if mean_rev
+    drawLabel(mean_rev_dn, label.style_label_down, color.new(color, 100), chart.fg_color, true)
+    drawLabel(mean_rev_up, label.style_label_up, color.new(color, 100), chart.fg_color, false)
+
+
+// Plot downward arrows above the bars if the previous 'band1' is equal to the previous high and the current high is not equal to 'band1'
+plotchar(mean_rev_dn and mean_rev? high[1] : na,
+         "", "⬥",
+         location = location.absolute,
+         color    = color,
+         size     = size.tiny,
+         offset   = -1)
+//
+// Plot upward arrows below the bars if the previous 'band1' is equal to the previous low and the current low is not equal to 'band1'
+plotchar(mean_rev_up and mean_rev? low[1] : na,
+         "", "⬥",
+         location = location.absolute,
+         color    = color,
+         size     = size.tiny,
+         offset   = -1)
+
+// --------------------------------------------------------------------------------------------------------------------}
