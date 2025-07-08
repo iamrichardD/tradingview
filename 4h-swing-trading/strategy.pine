@@ -1,787 +1,295 @@
-// This work is licensed under a Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) https://creativecommons.org/licenses/by-nc-sa/4.0/
-// © LuxAlgo Enhanced by Claude AI for 4H Swing Trading with ATR & Signal Filters
-
+// This work is licensed under a Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)
+// https://creativecommons.org/licenses/by-nc-sa/4.0/
+//
+// Contributors:
+// © LuxAlgo - Original market structure methodology
+// © Claude AI - Strategy optimization and simplification
+// © iamrichardD - Testing, validation & iterative improvement - https://github.com/iamrichardD
+//
 //@version=6
-strategy("Market Structure 4H + ATR + Filters [Enhanced]", "MS-4H-ATR", overlay=true,
-         max_lines_count=500, max_labels_count=500, max_boxes_count=500,
-         default_qty_type=strategy.percent_of_equity, default_qty_value=5,
-         commission_type=strategy.commission.percent, commission_value=0.075,
-         slippage=2, calc_on_every_tick=false, calc_on_order_fills=false)
+strategy("Market Structure MACD 4H + Trailing", "MS-MACD-4H", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=5,
+         commission_type=strategy.commission.percent, commission_value=0.075, slippage=2, calc_on_every_tick=true)
 
-//=====================================================================================================================
-// STRATEGY CONFIGURATION
-//=====================================================================================================================
+//===========================================================================================================
+// STRATEGY CONFIGURATION - Simplified for MS + MACD Only
+//===========================================================================================================
+grpMS = "📊 Market Structure"
+len = input.int(20, 'CHoCH Detection Period', minval=5, maxval=50, group=grpMS)
+shortLen = input.int(5, 'IDM Detection Period', minval=3, maxval=15, group=grpMS)
 
-// Market Structure Parameters
-grpStructure = "📊 Market Structure Settings"
-len = input.int(50, 'CHoCH Detection Period', minval=10, maxval=200, group=grpStructure)
-shortLen = input.int(8, 'IDM Detection Period', minval=3, maxval=20, group=grpStructure,
-                     tooltip="Shorter period for detecting inducements - key for swing entries")
+grpRisk = "🎯 Risk Management - With Trailing Stop"
+stopMultiplier = input.float(1.5, "Stop Loss ATR Multiplier", minval=0.5, maxval=4.0, step=0.1, group=grpRisk)
+tpMultiplier = input.float(3.0, "Take Profit ATR Multiplier", minval=1.0, maxval=6.0, step=0.1, group=grpRisk)
+useTrailingStop = input.bool(true, "Use Trailing Stop", group=grpRisk)
+trailStartMultiplier = input.float(1.0, "Trail Start ATR Multiplier", minval=0.5, maxval=3.0, step=0.1, group=grpRisk, tooltip="Start trailing when profit reaches this ATR multiple")
+atrPeriod = input.int(14, "ATR Period", minval=5, maxval=30, group=grpRisk)
 
-// ATR-Based Levels Configuration
-grpATR = "🎯 ATR-Based Levels"
-atrPeriod = input.int(14, "ATR Period", minval=5, maxval=50, group=grpATR)
-atrStopMultiplier = input.float(2.0, "ATR Stop Loss Multiplier", minval=0.5, maxval=5.0, step=0.1, group=grpATR)
-atrTpMultiplier = input.float(2.0, "ATR Take Profit Multiplier", minval=0.5, maxval=5.0, step=0.1, group=grpATR)
-useTrailingStop = input.bool(true, "Use Trailing Stop", group=grpATR, tooltip="Trail stop loss based on ATR")
-trailStartMultiplier = input.float(1.0, "Trail Start (ATR Multiplier)", minval=0.5, maxval=3.0, step=0.1, group=grpATR)
+// MACD Filter Parameters
+grpMACD = "🌊 MACD Filter"
+macdFast = input.int(12, "MACD Fast", minval=5, maxval=20, group=grpMACD)
+macdSlow = input.int(26, "MACD Slow", minval=15, maxval=40, group=grpMACD)
+macdSignal = input.int(9, "MACD Signal", minval=5, maxval=15, group=grpMACD)
 
-// Signal Filters Configuration
-grpFilters = "🔍 Signal Filters"
-
-// RSI Filter
-useRsiFilter = input.bool(true, "Enable RSI Filter", group=grpFilters)
-rsiPeriod = input.int(14, "RSI Period", minval=5, maxval=50, group=grpFilters)
-rsiOverbought = input.float(70.0, "RSI Overbought Level", minval=50.0, maxval=90.0, step=1.0, group=grpFilters)
-rsiOversold = input.float(30.0, "RSI Oversold Level", minval=10.0, maxval=50.0, step=1.0, group=grpFilters)
-rsiNeutralZone = input.float(10.0, "RSI Neutral Zone", minval=5.0, maxval=20.0, step=1.0, group=grpFilters,
-                             tooltip="RSI must be away from 50 by this amount")
-
-// Volume Filter
-useVolumeFilter = input.bool(true, "Enable Volume Filter", group=grpFilters)
-volumePeriod = input.int(20, "Volume MA Period", minval=5, maxval=100, group=grpFilters)
-volumeMultiplier = input.float(1.2, "Volume Threshold Multiplier", minval=0.5, maxval=3.0, step=0.1, group=grpFilters,
-                               tooltip="Current volume must be X times the average")
+//===========================================================================================================
+// TECHNICAL CALCULATIONS
+//===========================================================================================================
+// ATR for stops and targets
+atr = ta.atr(atrPeriod)
 
 // MACD Filter
-useMacdFilter = input.bool(true, "Enable MACD Filter", group=grpFilters)
-macdFastLength = input.int(12, "MACD Fast Length", minval=5, maxval=50, group=grpFilters)
-macdSlowLength = input.int(26, "MACD Slow Length", minval=10, maxval=100, group=grpFilters)
-macdSignalLength = input.int(9, "MACD Signal Length", minval=3, maxval=20, group=grpFilters)
+[macdLine, macdSignalLine, macdHist] = ta.macd(close, macdFast, macdSlow, macdSignal)
+macdBullish = macdLine > macdSignalLine and macdLine > 0
+macdBearish = macdLine < macdSignalLine and macdLine < 0
 
-// Strategy Parameters
-grpStrategy = "⚙️ Strategy Configuration"
-enableLongs = input.bool(true, "Enable Long Positions", group=grpStrategy)
-enableShorts = input.bool(true, "Enable Short Positions", group=grpStrategy)
-confluenceRequired = input.int(3, "Confluence Required", minval=2, maxval=6, group=grpStrategy,
-                               tooltip="Number of confirmations needed for entry (includes filters)")
-maxPositions = input.int(1, "Maximum Concurrent Positions", minval=1, maxval=5, group=grpStrategy)
-
-// Risk Management
-grpRisk = "🛡️ Risk Management"
-riskPerTrade = input.float(2.0, "Risk Per Trade (%)", minval=0.5, maxval=10.0, step=0.1, group=grpRisk)
-maxDailyRisk = input.float(6.0, "Maximum Daily Risk (%)", minval=1.0, maxval=20.0, step=0.5, group=grpRisk)
-maxWeeklyRisk = input.float(10.0, "Maximum Weekly Risk (%)", minval=2.0, maxval=30.0, step=1.0, group=grpRisk)
-
-// Time Filters
-grpTime = "⏰ Time Filters"
-useTimeFilter = input.bool(true, "Use Time Filter", group=grpTime)
-startHour = input.int(1, "Start Hour (UTC)", minval=0, maxval=23, group=grpTime)
-endHour = input.int(22, "End Hour (UTC)", minval=0, maxval=23, group=grpTime)
-avoidWeekends = input.bool(true, "Avoid Weekends", group=grpTime)
-avoidNews = input.bool(true, "Avoid Major News Times", group=grpTime)
-
-// Styling
-grpStyle = "🎨 Visualization"
-bullColor = input.color(#00D4AA, 'Bullish Elements', group=grpStyle)
-bearColor = input.color(#FF6B6B, 'Bearish Elements', group=grpStyle)
-neutralColor = input.color(#95A5A6, 'Neutral Elements', group=grpStyle)
-showSignals = input.bool(true, "Show Entry Signals", group=grpStyle)
-showLevels = input.bool(true, "Show ATR Levels", group=grpStyle)
-showFilters = input.bool(true, "Show Filter Status", group=grpStyle)
-
-//=====================================================================================================================
-// TECHNICAL INDICATORS & CALCULATIONS
-//=====================================================================================================================
-
-// ATR Calculation
-atrValue = ta.atr(atrPeriod)
-atrSma = ta.sma(atrValue, 10) // Smoothed ATR for more stable levels
-
-// RSI Calculation
-rsiValue = ta.rsi(close, rsiPeriod)
-
-// Volume Calculation
-volumeMA = ta.sma(volume, volumePeriod)
-volumeRatio = volume / volumeMA
-
-// MACD Calculation
-[macdLine, signalLine, histogramLine] = ta.macd(close, macdFastLength, macdSlowLength, macdSignalLength)
-macdBullish = macdLine > signalLine
-macdBearish = macdLine < signalLine
-macdMomentum = macdLine - macdLine[1] // MACD momentum
-
-//=====================================================================================================================
-// MARKET STRUCTURE LOGIC (Enhanced from Original)
-//=====================================================================================================================
-
-// Swings detection function
+// Market Structure Detection
 swingsDetection(lookback) =>
     var int oscillator = 0
-    var int topIndex = na
-    var int bottomIndex = na
-
     upperBand = ta.highest(high, lookback)
     lowerBand = ta.lowest(low, lookback)
-
     oscillator := high[lookback] > upperBand ? 0 : low[lookback] < lowerBand ? 1 : oscillator[1]
-
     swingHigh = oscillator == 0 and oscillator[1] != 0 ? high[lookback] : na
-    topIndex := oscillator == 0 and oscillator[1] != 0 ? bar_index[lookback] : topIndex
-
     swingLow = oscillator == 1 and oscillator[1] != 1 ? low[lookback] : na
-    bottomIndex := oscillator == 1 and oscillator[1] != 1 ? bar_index[lookback] : bottomIndex
+    [swingHigh, swingLow]
 
-    [swingHigh, topIndex, swingLow, bottomIndex]
+[swingHigh, swingLow] = swingsDetection(len)
+[shortSwingHigh, shortSwingLow] = swingsDetection(shortLen)
 
-// Get swing points
-[swingHigh, swingHighBar, swingLow, swingLowBar] = swingsDetection(len)
-[shortSwingHigh, shortSwingHighBar, shortSwingLow, shortSwingLowBar] = swingsDetection(shortLen)
-
-// Fix nan values consistently
-shortSwingHighFixed = fixnan(shortSwingHigh)
-shortSwingLowFixed = fixnan(shortSwingLow)
-
-// Market structure state tracking
+// Market structure state
 var int currentTrend = 0
 var float lastSwingHigh = na
 var float lastSwingLow = na
-var bool topCrossed = false
-var bool bottomCrossed = false
+var float currentHigh = na
+var float currentLow = na
 
-// Update swing levels
 if not na(swingHigh)
     lastSwingHigh := swingHigh
-    topCrossed := false
-
 if not na(swingLow)
     lastSwingLow := swingLow
-    bottomCrossed := false
 
 // CHoCH Detection
-chochBullish = close > lastSwingHigh and not topCrossed and currentTrend <= 0
-chochBearish = close < lastSwingLow and not bottomCrossed and currentTrend >= 0
+chochBullish = close > lastSwingHigh and currentTrend <= 0
+chochBearish = close < lastSwingLow and currentTrend >= 0
 
 if chochBullish
     currentTrend := 1
-    topCrossed := true
-
+    currentHigh := high
+    currentLow := low
 if chochBearish
     currentTrend := -1
-    bottomCrossed := true
-
-// BOS Detection with enhanced logic
-var float currentHigh = na
-var float currentLow = na
-var int highBar = na
-var int lowBar = na
-
-if currentTrend != currentTrend[1]
     currentHigh := high
     currentLow := low
-    highBar := bar_index
-    lowBar := bar_index
 
 // Update running high/low
-if high > currentHigh
+if currentTrend == 1 and high > currentHigh
     currentHigh := high
-    highBar := bar_index
-if low < currentLow
+if currentTrend == -1 and low < currentLow
     currentLow := low
-    lowBar := bar_index
 
-// IDM Detection (Inducements)
-idmBullish = currentTrend == 1 and low < shortSwingLowFixed and
-             shortSwingLowFixed != lastSwingLow and not na(shortSwingLow)
+// BOS Detection
+bosBullish = currentTrend == 1 and close > currentHigh and currentHigh != currentHigh[1]
+bosBearish = currentTrend == -1 and close < currentLow and currentLow != currentLow[1]
 
-idmBearish = currentTrend == -1 and high > shortSwingHighFixed and
-             shortSwingHighFixed != lastSwingHigh and not na(shortSwingHigh)
+// IDM Detection
+shortSwingHighFixed = fixnan(shortSwingHigh)
+shortSwingLowFixed = fixnan(shortSwingLow)
+idmBullish = currentTrend == 1 and low < shortSwingLowFixed and close > shortSwingLowFixed
+idmBearish = currentTrend == -1 and high > shortSwingHighFixed and close < shortSwingHighFixed
 
-// Calculate bars since IDM for consistent usage
-barsSinceIdmBullish = ta.barssince(idmBullish)
-barsSinceIdmBearish = ta.barssince(idmBearish)
+// Core market structure signals
+msLongSignal = chochBullish or bosBullish or idmBullish
+msShortSignal = chochBearish or bosBearish or idmBearish
 
-// BOS Conditions
-bosBullish = currentTrend == 1 and close > currentHigh and barsSinceIdmBullish <= 20
-bosBearish = currentTrend == -1 and close < currentLow and barsSinceIdmBearish <= 20
-
-// Sweep Detection
-sweepBullish = currentTrend == 1 and high > currentHigh and close < currentHigh and
-               bar_index - highBar > 1
-
-sweepBearish = currentTrend == -1 and low < currentLow and close > currentLow and
-               bar_index - lowBar > 1
-
-//=====================================================================================================================
-// SIGNAL FILTERS IMPLEMENTATION
-//=====================================================================================================================
-
-// RSI Filter Logic
-getRsiSignal() =>
-    if not useRsiFilter
-        [true, true, "RSI: Disabled"]
-    else
-        rsiLongOk = rsiValue < (rsiOverbought - rsiNeutralZone) and rsiValue > rsiOversold
-        rsiShortOk = rsiValue > (rsiOversold + rsiNeutralZone) and rsiValue < rsiOverbought
-
-        rsiStatus = rsiValue > rsiOverbought ? "RSI: Overbought" :
-                   rsiValue < rsiOversold ? "RSI: Oversold" :
-                   "RSI: Neutral (" + str.tostring(rsiValue, "#.#") + ")"
-
-        [rsiLongOk, rsiShortOk, rsiStatus]
-
-// Volume Filter Logic
-getVolumeSignal() =>
-    if not useVolumeFilter
-        [true, true, "Volume: Disabled"]
-    else
-        volumeOk = volumeRatio >= volumeMultiplier
-        volumeStatus = volumeOk ?
-                      "Volume: Strong (" + str.tostring(volumeRatio, "#.##") + "x)" :
-                      "Volume: Weak (" + str.tostring(volumeRatio, "#.##") + "x)"
-
-        [volumeOk, volumeOk, volumeStatus]
-
-// MACD Filter Logic
-getMacdSignal() =>
-    if not useMacdFilter
-        [true, true, "MACD: Disabled"]
-    else
-        // MACD bullish: line above signal AND positive momentum
-        macdLongOk = macdBullish and macdMomentum > 0 and macdLine > 0
-
-        // MACD bearish: line below signal AND negative momentum
-        macdShortOk = macdBearish and macdMomentum < 0 and macdLine < 0
-
-        macdStatus = macdBullish ? (macdMomentum > 0 ? "MACD: Bullish Strong" : "MACD: Bullish Weak") : (macdMomentum < 0 ? "MACD: Bearish Strong" : "MACD: Bearish Weak")
-
-        [macdLongOk, macdShortOk, macdStatus]
-
-// Get all filter signals
-[rsiLongOk, rsiShortOk, rsiStatus] = getRsiSignal()
-[volumeLongOk, volumeShortOk, volumeStatus] = getVolumeSignal()
-[macdLongOk, macdShortOk, macdStatus] = getMacdSignal()
-
-//=====================================================================================================================
-// CONFLUENCE ANALYSIS WITH FILTERS
-//=====================================================================================================================
-
-// Enhanced confluence calculation including filters
-getBullishConfluence() =>
-    confluence = 0
-
-    // Calculate bars since events for consistent usage
-    barsSinceIdmBull = ta.barssince(idmBullish)
-    barsSinceSweepBull = ta.barssince(sweepBullish)
-
-    // Market Structure confirmations
-    if bosBullish or chochBullish
-        confluence += 1
-
-    if barsSinceIdmBull <= 5
-        confluence += 1
-
-    if barsSinceSweepBull <= 3
-        confluence += 1
-
-    // Price action confirmation
-    if close > open and (close - open) > (high - low) * 0.6
-        confluence += 1
-
-    // Filter confirmations
-    if rsiLongOk
-        confluence += 1
-
-    if volumeLongOk
-        confluence += 1
-
-    if macdLongOk
-        confluence += 1
-
-    confluence
-
-getBearishConfluence() =>
-    confluence = 0
-
-    // Calculate bars since events for consistent usage
-    barsSinceIdmBear = ta.barssince(idmBearish)
-    barsSinceSweepBear = ta.barssince(sweepBearish)
-
-    // Market Structure confirmations
-    if bosBearish or chochBearish
-        confluence += 1
-
-    if barsSinceIdmBear <= 5
-        confluence += 1
-
-    if barsSinceSweepBear <= 3
-        confluence += 1
-
-    // Price action confirmation
-    if close < open and (open - close) > (high - low) * 0.6
-        confluence += 1
-
-    // Filter confirmations
-    if rsiShortOk
-        confluence += 1
-
-    if volumeShortOk
-        confluence += 1
-
-    if macdShortOk
-        confluence += 1
-
-    confluence
-
-//=====================================================================================================================
-// TIME FILTER LOGIC
-//=====================================================================================================================
-
-getTimeFilter() =>
-    if not useTimeFilter
-        true
-    else
-        currentHour = hour(time)
-        currentDayOfWeek = dayofweek(time)
-
-        // Basic time range check
-        timeOk = currentHour >= startHour and currentHour <= endHour
-
-        // Weekend filter
-        if avoidWeekends
-            weekendCheck = currentDayOfWeek != dayofweek.saturday and currentDayOfWeek != dayofweek.sunday
-            timeOk := timeOk and weekendCheck
-
-        // News filter (avoid major news times)
-        if avoidNews
-            newsHours = currentHour == 8 or currentHour == 13 or currentHour == 14 or currentHour == 20
-            timeOk := timeOk and not newsHours
-
-        timeOk
-
-//=====================================================================================================================
-// ATR-BASED LEVEL CALCULATIONS
-//=====================================================================================================================
-
-// Calculate ATR-based stop loss and take profit
-calculateATRLevels(entryPrice, isLong) =>
-    stopLoss = isLong ? entryPrice - (atrSma * atrStopMultiplier) : entryPrice + (atrSma * atrStopMultiplier)
-    takeProfit = isLong ? entryPrice + (atrSma * atrTpMultiplier) : entryPrice - (atrSma * atrTpMultiplier)
-
-    [stopLoss, takeProfit]
-
-// Trailing stop logic
-var float trailStopLevel = na
-var bool trailActive = false
-
-calculateTrailingStop(entryPrice, currentPrice, isLong) =>
-    if useTrailingStop
-        trailDistance = atrSma * trailStartMultiplier
-
-        if isLong
-            newTrailLevel = currentPrice - trailDistance
-            shouldUpdate = na(trailStopLevel) or newTrailLevel > trailStopLevel
-            [newTrailLevel, shouldUpdate]
-        else
-            newTrailLevel = currentPrice + trailDistance
-            shouldUpdate = na(trailStopLevel) or newTrailLevel < trailStopLevel
-            [newTrailLevel, shouldUpdate]
-    else
-        [na, false]
-
-//=====================================================================================================================
-// RISK MANAGEMENT SYSTEM
-//=====================================================================================================================
-
-// Position sizing based on ATR and risk percentage
-calculatePositionSize(entryPrice, stopLoss) =>
-    accountEquity = strategy.equity
-    riskAmount = accountEquity * (riskPerTrade / 100)
-    stopDistance = math.abs(entryPrice - stopLoss)
-
-    if stopDistance > 0
-        positionSize = riskAmount / stopDistance
-        // Ensure minimum position size
-        math.max(positionSize, 1)
-    else
-        0
-
-// Daily/Weekly risk tracking
-var float dailyRisk = 0.0
-var float weeklyRisk = 0.0
-var int lastTradeDay = na
-var int lastTradeWeek = na
-
-// Reset risk counters
-if dayofmonth != dayofmonth[1]
-    dailyRisk := 0.0
-
-if weekofyear != weekofyear[1]
-    weeklyRisk := 0.0
-
-// Risk limits check
-getRiskLimitsOk() =>
-    dailyRiskOk = dailyRisk < maxDailyRisk
-    weeklyRiskOk = weeklyRisk < maxWeeklyRisk
-    positionLimitOk = strategy.opentrades < maxPositions
-
-    dailyRiskOk and weeklyRiskOk and positionLimitOk
-
-//=====================================================================================================================
+//===========================================================================================================
 // ENTRY CONDITIONS
-//=====================================================================================================================
+//===========================================================================================================
+// Simple MS + MACD entry conditions
+longCondition = msLongSignal and macdBullish and strategy.position_size == 0
+shortCondition = msShortSignal and macdBearish and strategy.position_size == 0
 
-// Get confluence scores
-bullishConfluence = getBullishConfluence()
-bearishConfluence = getBearishConfluence()
+// Calculate stop loss and take profit levels
+longStopLoss = close - (atr * stopMultiplier)
+longTakeProfit = close + (atr * tpMultiplier)
+shortStopLoss = close + (atr * stopMultiplier)
+shortTakeProfit = close - (atr * tpMultiplier)
 
-// Time filter
-timeFilterOk = getTimeFilter()
+//===========================================================================================================
+// STRATEGY EXECUTION WITH TRAILING STOPS
+//===========================================================================================================
+// Trailing stop variables
+var float longTrailStop = na
+var float shortTrailStop = na
+var bool longTrailActive = false
+var bool shortTrailActive = false
 
-// Calculate bars since IDM for entry conditions
-barsSinceIdmBullishEntry = ta.barssince(idmBullish)
-barsSinceIdmBearishEntry = ta.barssince(idmBearish)
-
-// Get risk limits status
-riskLimitsOk = getRiskLimitsOk()
-
-// Long entry conditions
-longCondition = enableLongs and timeFilterOk and currentTrend == 1 and bullishConfluence >= confluenceRequired and riskLimitsOk and strategy.position_size == 0 and (bosBullish or (chochBullish and barsSinceIdmBullishEntry <= 10))
-
-// Short entry conditions
-shortCondition = enableShorts and timeFilterOk and currentTrend == -1 and bearishConfluence >= confluenceRequired and riskLimitsOk and strategy.position_size == 0 and (bosBearish or (chochBearish and barsSinceIdmBearishEntry <= 10))
-
-//=====================================================================================================================
-// STRATEGY EXECUTION
-//=====================================================================================================================
-
-// Execute long positions
 if longCondition
-    [stopLoss, takeProfit] = calculateATRLevels(close, true)
-    positionSize = calculatePositionSize(close, stopLoss)
+    strategy.entry("Long", strategy.long, comment="MS+MACD Long")
+    strategy.exit("Long Exit", "Long", stop=longStopLoss, limit=longTakeProfit)
+    longTrailStop := na
+    longTrailActive := false
 
-    // Place entry order
-    strategy.entry("Long", strategy.long, qty=positionSize, comment="MS Long Entry")
-
-    // Set initial stop and target
-    strategy.exit("Long Exit", "Long", stop=stopLoss, limit=takeProfit, comment="ATR Levels Exit")
-
-    // Update risk tracking
-    tradeRisk = (close - stopLoss) / close * 100
-    dailyRisk := dailyRisk + tradeRisk
-    weeklyRisk := weeklyRisk + tradeRisk
-
-    // Reset trailing stop
-    trailStopLevel := na
-    trailActive := false
-
-// Execute short positions
 if shortCondition
-    [stopLoss, takeProfit] = calculateATRLevels(close, false)
-    positionSize = calculatePositionSize(close, stopLoss)
+    strategy.entry("Short", strategy.short, comment="MS+MACD Short")
+    strategy.exit("Short Exit", "Short", stop=shortStopLoss, limit=shortTakeProfit)
+    shortTrailStop := na
+    shortTrailActive := false
 
-    // Place entry order
-    strategy.entry("Short", strategy.short, qty=positionSize, comment="MS Short Entry")
+// Trailing Stop Logic for Long Positions
+if strategy.position_size > 0 and useTrailingStop
+    entryPrice = strategy.position_avg_price
+    currentProfit = close - entryPrice
+    trailTrigger = atr * trailStartMultiplier
 
-    // Set initial stop and target
-    strategy.exit("Short Exit", "Short", stop=stopLoss, limit=takeProfit, comment="ATR Levels Exit")
+    if currentProfit >= trailTrigger and not longTrailActive
+        longTrailActive := true
+        longTrailStop := close - (atr * stopMultiplier)
 
-    // Update risk tracking
-    tradeRisk = (stopLoss - close) / close * 100
-    dailyRisk := dailyRisk + tradeRisk
-    weeklyRisk := weeklyRisk + tradeRisk
+    if longTrailActive
+        newTrailStop = close - (atr * stopMultiplier)
+        if na(longTrailStop) or newTrailStop > longTrailStop
+            longTrailStop := newTrailStop
+            strategy.exit("Long Trail", "Long", stop=longTrailStop, limit=longTakeProfit)
 
-    // Reset trailing stop
-    trailStopLevel := na
-    trailActive := false
+// Trailing Stop Logic for Short Positions
+if strategy.position_size < 0 and useTrailingStop
+    entryPrice = strategy.position_avg_price
+    currentProfit = entryPrice - close
+    trailTrigger = atr * trailStartMultiplier
 
-// Update trailing stops for active positions
-if strategy.position_size > 0 // Long position
-    [newTrailLevel, shouldUpdate] = calculateTrailingStop(strategy.position_avg_price, close, true)
-    if shouldUpdate and not na(newTrailLevel)
-        trailStopLevel := newTrailLevel
-        trailActive := true
-        strategy.exit("Long Trail", "Long", stop=newTrailLevel, comment="Trail Stop Active")
+    if currentProfit >= trailTrigger and not shortTrailActive
+        shortTrailActive := true
+        shortTrailStop := close + (atr * stopMultiplier)
 
-if strategy.position_size < 0 // Short position
-    [newTrailLevel, shouldUpdate] = calculateTrailingStop(strategy.position_avg_price, close, false)
-    if shouldUpdate and not na(newTrailLevel)
-        trailStopLevel := newTrailLevel
-        trailActive := true
-        strategy.exit("Short Trail", "Short", stop=newTrailLevel, comment="Trail Stop Active")
+    if shortTrailActive
+        newTrailStop = close + (atr * stopMultiplier)
+        if na(shortTrailStop) or newTrailStop < shortTrailStop
+            shortTrailStop := newTrailStop
+            strategy.exit("Short Trail", "Short", stop=shortTrailStop, limit=shortTakeProfit)
 
-//=====================================================================================================================
+//===========================================================================================================
 // VISUALIZATION
-//=====================================================================================================================
+//===========================================================================================================
+// Show levels input
+showLevels = input.bool(true, "Show Stop/TP Levels", group="🎨 Visualization")
 
-// Plot ATR-based levels for current position
-currentStopLoss = strategy.position_size > 0 ? strategy.position_avg_price - (atrSma * atrStopMultiplier) : strategy.position_size < 0 ? strategy.position_avg_price + (atrSma * atrStopMultiplier) : na
+// Plot levels and trailing stops
+plot(showLevels and strategy.position_size > 0 ? longStopLoss : na, "Initial Stop Loss", color.red, linewidth=1, style=plot.style_linebr)
+plot(showLevels and strategy.position_size > 0 ? longTakeProfit : na, "Take Profit", color.green, linewidth=1, style=plot.style_linebr)
+plot(showLevels and strategy.position_size < 0 ? shortStopLoss : na, "Initial Stop Loss", color.red, linewidth=1, style=plot.style_linebr)
+plot(showLevels and strategy.position_size < 0 ? shortTakeProfit : na, "Take Profit", color.green, linewidth=1, style=plot.style_linebr)
 
-currentTakeProfit = strategy.position_size > 0 ? strategy.position_avg_price + (atrSma * atrTpMultiplier) : strategy.position_size < 0 ? strategy.position_avg_price - (atrSma * atrTpMultiplier) : na
+// Plot active trailing stops
+plot(showLevels and longTrailActive ? longTrailStop : na, "Long Trail Stop", color.orange, linewidth=2, style=plot.style_linebr)
+plot(showLevels and shortTrailActive ? shortTrailStop : na, "Short Trail Stop", color.orange, linewidth=2, style=plot.style_linebr)
 
-// Plot levels
-plot(showLevels and strategy.position_size != 0 ? currentStopLoss : na,
-     "ATR Stop Loss", color.red, linewidth=2, style=plot.style_linebr)
-plot(showLevels and strategy.position_size != 0 ? currentTakeProfit : na,
-     "ATR Take Profit", color.green, linewidth=2, style=plot.style_linebr)
-plot(showLevels and trailActive ? trailStopLevel : na,
-     "Trailing Stop", color.orange, linewidth=2, style=plot.style_linebr)
+// Entry signals
+plotshape(longCondition, "Long Entry", shape.labelup, location.belowbar, color.green,
+          text="LONG", textcolor=color.white, size=size.normal)
+plotshape(shortCondition, "Short Entry", shape.labeldown, location.abovebar, color.red,
+          text="SHORT", textcolor=color.white, size=size.normal)
 
-// Plot swing points
-plotshape(showSignals and not na(swingHigh), "Swing High", shape.triangledown,
-          location.abovebar, bearColor, size=size.small, offset=-len)
-plotshape(showSignals and not na(swingLow), "Swing Low", shape.triangleup,
-          location.belowbar, bullColor, size=size.small, offset=-len)
+// Market structure signals
+plotshape(chochBullish, "CHoCH Bull", shape.triangleup, location.belowbar, color.lime, size=size.tiny)
+plotshape(chochBearish, "CHoCH Bear", shape.triangledown, location.abovebar, color.orange, size=size.tiny)
 
-// Plot entry signals with confluence info
-plotshape(showSignals and longCondition, "Long Entry", shape.labelup,
-          location.belowbar, bullColor, text="LONG", textcolor=color.white, size=size.normal)
-plotshape(showSignals and shortCondition, "Short Entry", shape.labeldown,
-          location.abovebar, bearColor, text="SHORT", textcolor=color.white, size=size.normal)
+// Background trend
+bgcolor(currentTrend == 1 ? color.new(color.green, 95) : currentTrend == -1 ? color.new(color.red, 95) : na)
 
-// Market structure visualization
-if chochBullish and showLevels
-    line.new(bar_index, lastSwingHigh, bar_index + 10, lastSwingHigh,
-             color=bullColor, style=line.style_dashed, width=2)
-    label.new(bar_index, lastSwingHigh, "CHoCH ↑", color=color.new(bullColor, 80),
-              style=label.style_label_down, textcolor=bullColor, size=size.small)
+//===========================================================================================================
+// CURRENT SIGNALS FOR DASHBOARD
+//===========================================================================================================
+currentMSSignal = msLongSignal or msShortSignal
+currentMACDAlign = (msLongSignal and macdBullish) or (msShortSignal and macdBearish)
 
-if chochBearish and showLevels
-    line.new(bar_index, lastSwingLow, bar_index + 10, lastSwingLow,
-             color=bearColor, style=line.style_dashed, width=2)
-    label.new(bar_index, lastSwingLow, "CHoCH ↓", color=color.new(bearColor, 80),
-              style=label.style_label_up, textcolor=bearColor, size=size.small)
-
-//=====================================================================================================================
+//===========================================================================================================
 // PERFORMANCE DASHBOARD
-//=====================================================================================================================
-
+//===========================================================================================================
 if barstate.islast
-    // Create main performance table
-    var table performanceTable = table.new(position.top_right, 4, 12, bgcolor=color.white, border_width=1)
+    var table perfTable = table.new(position.top_right, 4, 12, bgcolor=color.white, border_width=1)
 
     // Headers
-    table.cell(performanceTable, 0, 0, "📊 Performance", text_color=color.white, bgcolor=color.navy)
-    table.cell(performanceTable, 1, 0, "Value", text_color=color.white, bgcolor=color.navy)
-    table.cell(performanceTable, 2, 0, "Target", text_color=color.white, bgcolor=color.navy)
-    table.cell(performanceTable, 3, 0, "Status", text_color=color.white, bgcolor=color.navy)
+    table.cell(perfTable, 0, 0, "📊 MS+MACD Strategy", text_color=color.white, bgcolor=color.navy)
+    table.cell(perfTable, 1, 0, "Value", text_color=color.white, bgcolor=color.navy)
+    table.cell(perfTable, 2, 0, "Target", text_color=color.white, bgcolor=color.navy)
+    table.cell(perfTable, 3, 0, "Status", text_color=color.white, bgcolor=color.navy)
 
     // Performance metrics
-    netProfit = strategy.netprofit
     winRate = strategy.wintrades / math.max(strategy.closedtrades, 1) * 100
     profitFactor = strategy.grossprofit / math.max(strategy.grossloss, 1)
-    maxDD = strategy.max_drawdown
-    avgTrade = strategy.netprofit / math.max(strategy.closedtrades, 1)
+    avgWin = strategy.grossprofit / math.max(strategy.wintrades, 1)
+    avgLoss = strategy.grossloss / math.max(strategy.losstrades, 1)
+    rrRatio = avgWin / math.max(avgLoss, 1)
 
-    // Display key metrics
-    table.cell(performanceTable, 0, 1, "Net P&L", text_color=color.black)
-    table.cell(performanceTable, 1, 1, str.tostring(netProfit, "$#,###"),
-               text_color=netProfit > 0 ? color.green : color.red)
-    table.cell(performanceTable, 2, 1, "> 0", text_color=color.black)
-    table.cell(performanceTable, 3, 1, netProfit > 0 ? "✓" : "✗",
-               text_color=netProfit > 0 ? color.green : color.red)
+    // Display metrics
+    table.cell(perfTable, 0, 1, "Total Trades", text_color=color.black)
+    table.cell(perfTable, 1, 1, str.tostring(strategy.closedtrades), text_color=color.black)
+    table.cell(perfTable, 2, 1, ">20", text_color=color.black)
+    table.cell(perfTable, 3, 1, strategy.closedtrades > 20 ? "✓" : "⚠",
+               text_color=strategy.closedtrades > 20 ? color.green : color.orange)
 
-    table.cell(performanceTable, 0, 2, "Win Rate", text_color=color.black)
-    table.cell(performanceTable, 1, 2, str.tostring(winRate, "#.#") + "%",
-               text_color=winRate > 50 ? color.green : color.red)
-    table.cell(performanceTable, 2, 2, "> 50%", text_color=color.black)
-    table.cell(performanceTable, 3, 2, winRate > 50 ? "✓" : "✗",
-               text_color=winRate > 50 ? color.green : color.red)
+    table.cell(perfTable, 0, 2, "Win Rate", text_color=color.black)
+    table.cell(perfTable, 1, 2, str.tostring(winRate, "#.#") + "%",
+               text_color=winRate > 40 ? color.green : color.red)
+    table.cell(perfTable, 2, 2, ">40%", text_color=color.black)
+    table.cell(perfTable, 3, 2, winRate > 40 ? "✓" : "✗",
+               text_color=winRate > 40 ? color.green : color.red)
 
-    table.cell(performanceTable, 0, 3, "Profit Factor", text_color=color.black)
-    table.cell(performanceTable, 1, 3, str.tostring(profitFactor, "#.##"),
-               text_color=profitFactor > 1.5 ? color.green : color.red)
-    table.cell(performanceTable, 2, 3, "> 1.5", text_color=color.black)
-    table.cell(performanceTable, 3, 3, profitFactor > 1.5 ? "✓" : "✗",
-               text_color=profitFactor > 1.5 ? color.green : color.red)
+    table.cell(perfTable, 0, 3, "Risk/Reward", text_color=color.black)
+    table.cell(perfTable, 1, 3, str.tostring(rrRatio, "#.##"),
+               text_color=rrRatio > 1.5 ? color.green : color.red)
+    table.cell(perfTable, 2, 3, ">1.5", text_color=color.black)
+    table.cell(perfTable, 3, 3, rrRatio > 1.5 ? "✓" : "✗",
+               text_color=rrRatio > 1.5 ? color.green : color.red)
 
-    table.cell(performanceTable, 0, 4, "Max DD", text_color=color.black)
-    table.cell(performanceTable, 1, 4, str.tostring(maxDD, "$#,###"),
-               text_color=maxDD < strategy.initial_capital * 0.15 ? color.green : color.red)
-    table.cell(performanceTable, 2, 4, "< 15%", text_color=color.black)
-    table.cell(performanceTable, 3, 4, maxDD < strategy.initial_capital * 0.15 ? "✓" : "✗",
-               text_color=maxDD < strategy.initial_capital * 0.15 ? color.green : color.red)
+    table.cell(perfTable, 0, 4, "Net P&L", text_color=color.black)
+    table.cell(perfTable, 1, 4, str.tostring(strategy.netprofit, "$#,###"),
+               text_color=strategy.netprofit > 0 ? color.green : color.red)
+    table.cell(perfTable, 2, 4, ">0", text_color=color.black)
+    table.cell(perfTable, 3, 4, strategy.netprofit > 0 ? "✓" : "✗",
+               text_color=strategy.netprofit > 0 ? color.green : color.red)
 
-    // Current trade info
-    table.cell(performanceTable, 0, 6, "🎯 Current Trade", text_color=color.white, bgcolor=color.blue)
-    table.cell(performanceTable, 1, 6, "", text_color=color.white, bgcolor=color.blue)
-    table.cell(performanceTable, 2, 6, "", text_color=color.white, bgcolor=color.blue)
-    table.cell(performanceTable, 3, 6, "", text_color=color.white, bgcolor=color.blue)
+    table.cell(perfTable, 0, 5, "Profit Factor", text_color=color.black)
+    table.cell(perfTable, 1, 5, str.tostring(profitFactor, "#.##"),
+               text_color=profitFactor > 1.3 ? color.green : color.red)
+    table.cell(perfTable, 2, 5, ">1.3", text_color=color.black)
+    table.cell(perfTable, 3, 5, profitFactor > 1.3 ? "✓" : "✗",
+               text_color=profitFactor > 1.3 ? color.green : color.red)
 
-    if strategy.position_size != 0
-        positionType = strategy.position_size > 0 ? "LONG" : "SHORT"
-        entryPrice = strategy.position_avg_price
-        currentPnL = strategy.openprofit
+    // Current signal status
+    table.cell(perfTable, 0, 10, "MS Signal", text_color=color.black)
+    table.cell(perfTable, 1, 10, currentMSSignal ? "ACTIVE" : "WAITING",
+               text_color=currentMSSignal ? color.green : color.gray)
 
-        table.cell(performanceTable, 0, 7, "Position", text_color=color.black)
-        table.cell(performanceTable, 1, 7, positionType,
-                   text_color=strategy.position_size > 0 ? color.green : color.red)
+    table.cell(perfTable, 0, 11, "MACD Aligned", text_color=color.black)
+    table.cell(perfTable, 1, 11, currentMACDAlign ? "YES" : "NO",
+               text_color=currentMACDAlign ? color.green : color.gray)
 
-        table.cell(performanceTable, 0, 8, "Entry Price", text_color=color.black)
-        table.cell(performanceTable, 1, 8, str.tostring(entryPrice, "#.####"), text_color=color.black)
+//===========================================================================================================
+// SIMPLIFIED FILTER STATUS DASHBOARD
+//===========================================================================================================
+if barstate.islast
+    var table filterTable = table.new(position.top_left, 3, 4, bgcolor=color.white, border_width=1)
 
-        table.cell(performanceTable, 0, 9, "Current P&L", text_color=color.black)
-        table.cell(performanceTable, 1, 9, str.tostring(currentPnL, "$#,###"),
-                   text_color=currentPnL > 0 ? color.green : color.red)
+    table.cell(filterTable, 0, 0, "🔍 Signal Status", text_color=color.white, bgcolor=color.purple)
+    table.cell(filterTable, 1, 0, "Long", text_color=color.white, bgcolor=color.purple)
+    table.cell(filterTable, 2, 0, "Short", text_color=color.white, bgcolor=color.purple)
 
-        table.cell(performanceTable, 0, 10, "ATR Value", text_color=color.black)
-        table.cell(performanceTable, 1, 10, str.tostring(atrSma, "#.####"), text_color=color.black)
-    else
-        table.cell(performanceTable, 0, 7, "Position", text_color=color.black)
-        table.cell(performanceTable, 1, 7, "NONE", text_color=color.gray)
+    // Market Structure
+    table.cell(filterTable, 0, 1, "Market Structure", text_color=color.black)
+    table.cell(filterTable, 1, 1, msLongSignal ? "✓" : "✗",
+               text_color=msLongSignal ? color.green : color.red)
+    table.cell(filterTable, 2, 1, msShortSignal ? "✓" : "✗",
+               text_color=msShortSignal ? color.green : color.red)
 
-        table.cell(performanceTable, 0, 8, "Next Entry", text_color=color.black)
-        nextSignal = longCondition ? "LONG READY" : shortCondition ? "SHORT READY" : "WAITING"
-        signalColor = longCondition ? color.green : shortCondition ? color.red : color.gray
-        table.cell(performanceTable, 1, 8, nextSignal, text_color=signalColor)
+    // MACD
+    table.cell(filterTable, 0, 2, "MACD", text_color=color.black)
+    table.cell(filterTable, 1, 2, macdBullish ? "✓" : "✗",
+               text_color=macdBullish ? color.green : color.red)
+    table.cell(filterTable, 2, 2, macdBearish ? "✓" : "✗",
+               text_color=macdBearish ? color.green : color.red)
 
-// Filter Status Dashboard
-if barstate.islast and showFilters
-    var table filterTable = table.new(position.top_left, 3, 8, bgcolor=color.white, border_width=1)
-
-    // Headers
-    table.cell(filterTable, 0, 0, "🔍 Filters", text_color=color.white, bgcolor=color.purple)
-    table.cell(filterTable, 1, 0, "Status", text_color=color.white, bgcolor=color.purple)
-    table.cell(filterTable, 2, 0, "Value", text_color=color.white, bgcolor=color.purple)
-
-    // Market Structure Status
-    table.cell(filterTable, 0, 1, "Trend", text_color=color.black)
-    trendText = currentTrend == 1 ? "BULLISH" : currentTrend == -1 ? "BEARISH" : "NEUTRAL"
-    trendColor = currentTrend == 1 ? color.green : currentTrend == -1 ? color.red : color.gray
-    table.cell(filterTable, 1, 1, trendText, text_color=trendColor)
-    table.cell(filterTable, 2, 1, str.tostring(currentTrend), text_color=color.black)
-
-    // RSI Status
-    table.cell(filterTable, 0, 2, "RSI", text_color=color.black)
-    rsiColor = rsiLongOk or rsiShortOk ? color.green : color.red
-    table.cell(filterTable, 1, 2, rsiLongOk or rsiShortOk ? "PASS" : "FAIL", text_color=rsiColor)
-    table.cell(filterTable, 2, 2, str.tostring(rsiValue, "#.#"), text_color=color.black)
-
-    // Volume Status
-    table.cell(filterTable, 0, 3, "Volume", text_color=color.black)
-    volumeColor = volumeLongOk ? color.green : color.red
-    table.cell(filterTable, 1, 3, volumeLongOk ? "PASS" : "FAIL", text_color=volumeColor)
-    table.cell(filterTable, 2, 3, str.tostring(volumeRatio, "#.##") + "x", text_color=color.black)
-
-    // MACD Status
-    table.cell(filterTable, 0, 4, "MACD", text_color=color.black)
-    macdColor = macdLongOk or macdShortOk ? color.green : color.red
-    table.cell(filterTable, 1, 4, macdLongOk or macdShortOk ? "PASS" : "FAIL", text_color=macdColor)
-    table.cell(filterTable, 2, 4, str.tostring(macdLine, "#.####"), text_color=color.black)
-
-    // Confluence Status
-    table.cell(filterTable, 0, 5, "Confluence", text_color=color.black)
-    maxConfluence = math.max(bullishConfluence, bearishConfluence)
-    confluenceColor = maxConfluence >= confluenceRequired ? color.green : color.red
-    table.cell(filterTable, 1, 5, maxConfluence >= confluenceRequired ? "READY" : "WAIT", text_color=confluenceColor)
-    table.cell(filterTable, 2, 5, str.tostring(maxConfluence) + "/" + str.tostring(confluenceRequired), text_color=color.black)
-
-    // Time Filter Status
-    table.cell(filterTable, 0, 6, "Time", text_color=color.black)
-    timeColor = timeFilterOk ? color.green : color.red
-    table.cell(filterTable, 1, 6, timeFilterOk ? "PASS" : "BLOCKED", text_color=timeColor)
-    table.cell(filterTable, 2, 6, str.tostring(hour(time)) + ":00", text_color=color.black)
-
-    // Risk Status
-    table.cell(filterTable, 0, 7, "Risk Limits", text_color=color.black)
-    riskOk = riskLimitsOk
-    riskColor = riskOk ? color.green : color.red
-    table.cell(filterTable, 1, 7, riskOk ? "OK" : "LIMIT", text_color=riskColor)
-    table.cell(filterTable, 2, 7, str.tostring(dailyRisk, "#.#") + "%", text_color=color.black)
-
-//=====================================================================================================================
-// ALERTS CONFIGURATION
-//=====================================================================================================================
-
-// Enhanced alert conditions with filter information
-alertcondition(longCondition, "Long Entry + Filters",
-               "MS 4H Long Entry Signal - All Filters Passed")
-
-alertcondition(shortCondition, "Short Entry + Filters",
-               "MS 4H Short Entry Signal - All Filters Passed")
-
-alertcondition(chochBullish, "Bullish CHoCH + Filters",
-               "Bullish CHoCH Detected - Check Filter Status")
-
-alertcondition(chochBearish, "Bearish CHoCH + Filters",
-               "Bearish CHoCH Detected - Check Filter Status")
-
-alertcondition(bosBullish and bullishConfluence >= confluenceRequired, "Filtered Bullish BOS",
-               "Bullish BOS + All Filters Passed")
-
-alertcondition(bosBearish and bearishConfluence >= confluenceRequired, "Filtered Bearish BOS",
-               "Bearish BOS + All Filters Passed")
-
-// Risk management alerts
-alertcondition(strategy.position_size != 0 and trailActive, "Trailing Stop Active",
-               "Trailing Stop Activated")
-
-alertcondition(dailyRisk >= maxDailyRisk * 0.8, "Daily Risk Warning",
-               "Daily Risk at 80% - Check Position Sizing")
-
-//=====================================================================================================================
-// DEBUGGING AND ANALYSIS PLOTS
-//=====================================================================================================================
-
-// Plot confluence levels for analysis
-plot(bullishConfluence, "Bullish Confluence", color.green, display=display.data_window)
-plot(bearishConfluence, "Bearish Confluence", color.red, display=display.data_window)
-plot(rsiValue, "RSI Value", color.blue, display=display.data_window)
-plot(volumeRatio, "Volume Ratio", color.orange, display=display.data_window)
-plot(macdLine, "MACD Line", color.purple, display=display.data_window)
-
-// Plot ATR for reference
-plot(atrSma, "ATR", color.gray, display=display.data_window)
-
-// Background color for market structure trend
-bgcolor(currentTrend == 1 ? color.new(bullColor, 95) : currentTrend == -1 ? color.new(bearColor, 95) : color.new(neutralColor, 98), title="Trend Background")
-
-//=====================================================================================================================
-// STRATEGY NOTES & DOCUMENTATION
-//=====================================================================================================================
-
-// STRATEGY SUMMARY:
-// ================
-// This enhanced Market Structure strategy combines:
-// 1. Original LuxAlgo market structure detection (CHoCH, BOS, IDM, Sweeps)
-// 2. ATR-based stop loss (2 ATR) and take profit (2 ATR) levels
-// 3. Signal filters: RSI, Volume, MACD for confluence
-// 4. Advanced risk management with daily/weekly limits
-// 5. Trailing stops based on ATR
-// 6. Comprehensive visualization and alerts
-//
-// RECOMMENDED SETTINGS:
-// ====================
-// Timeframe: 4H (optimized for swing trading)
-// ATR Period: 14
-// ATR Stop/TP Multiplier: 2.0 each (1:1 risk/reward)
-// Confluence Required: 3 (moderate filtering)
-// Risk Per Trade: 2%
-//
-// FILTER LOGIC:
-// =============
-// RSI: Avoid extreme overbought/oversold conditions
-// Volume: Require above-average volume for entries
-// MACD: Confirm momentum direction and strength
-// Time: Avoid weekends and major news events
-//
-// EXPECTED PERFORMANCE:
-// ====================
-// Win Rate: 45-60% (depending on confluence setting)
-// Profit Factor: 1.3-2.0 (with proper risk management)
-// Max Drawdown: <15% (with 2% risk per trade)
-// Monthly Return: 4-8% (conservative estimate)
-//
-// OPTIMIZATION NOTES:
-// ==================
-// - Increase confluence for fewer, higher quality trades
-// - Adjust ATR multipliers based on market volatility
-// - Fine-tune filter parameters for specific assets
-// - Consider correlation filters for portfolio management
-//
-// ALERT SETUP:
-// ============
-// Set up TradingView alerts for:
-// 1. Entry signals with filter confirmation
-// 2. CHoCH/BOS with confluence ready
-// 3. Risk management warnings
-// 4. Trailing stop activations
-//
-// RISK WARNINGS:
-// ==============
-// - Backtest thoroughly before live trading
-// - Start with small position sizes
-// - Monitor correlation across positions
-// - Respect daily/weekly risk limits
-// - Have manual override procedures ready
-//=====================================================================================================================
+    // Entry ready status
+    table.cell(filterTable, 0, 3, "Entry Ready", text_color=color.black)
+    table.cell(filterTable, 1, 3, longCondition ? "READY" : "WAIT",
+               text_color=longCondition ? color.green : color.gray)
+    table.cell(filterTable, 2, 3, shortCondition ? "READY" : "WAIT",
+               text_color=shortCondition ? color.green : color.gray)
