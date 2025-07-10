@@ -62,6 +62,336 @@ Transform TradingView indicators into **institutional-grade trading strategies**
 **Holding Period**: Minutes to hours with rapid execution
 **Risk Profile**: Higher frequency with tight controls
 
+## 🚨 **CRITICAL PINE SCRIPT v6 RUNTIME INITIALIZATION (MANDATORY)**
+
+### **Pine Script v6 Runtime Initialization Requirements**
+
+Pine Script v6 has **critical runtime initialization requirements** that are different from compilation requirements:
+
+#### **✅ CORRECT: Safe Runtime Initialization**
+```pinescript
+// Initialize user-defined types with safe defaults
+var myType = MyType.new(na, na, false)
+
+// Initialize fields on first bar to prevent 'na' access errors
+if bar_index == 0
+    myType.field1 := close  // Use safe default values
+    myType.field2 := high
+    myType.field3 := true
+
+// Safe access with initialization checks
+value = bar_index > 0 and not na(myType.field1) ? myType.field1 : close
+
+// Safe historical access
+prevType = bar_index > 0 ? myType[1] : myType
+safePrevValue = bar_index > 1 and not na(prevType.field1) ? prevType.field1 : close
+```
+
+#### **❌ INCORRECT: Unsafe Runtime Access (RUNTIME ERROR)**
+```pinescript
+// Uninitialized type access - RUNTIME ERROR
+var myType = MyType.new(na, na, false)
+value = myType.field1  // ERROR: Cannot access field of undefined object
+
+// Unsafe historical access - RUNTIME ERROR  
+prevType = myType[1]   // ERROR on bar 0: myType[1] is na
+value = prevType.field1  // ERROR: Cannot access field of na object
+
+// Missing initialization checks - RUNTIME ERROR
+if condition and myType.field1 > high  // ERROR: field1 might be na
+    // Code here
+```
+
+#### **Critical Runtime Safety Patterns:**
+```pinescript
+// Pattern 1: First bar initialization
+if bar_index == 0
+    // Initialize all user-defined type fields
+    myType.field1 := close
+    myType.field2 := high
+
+// Pattern 2: Safe historical access
+if bar_index > 0  // Ensure history exists
+    prevValue = myType[1].field1
+
+// Pattern 3: Safe conditional access
+if bar_index > 1 and not na(myType.field1)
+    // Safe to use myType.field1
+
+// Pattern 4: Safe function calls
+result = bar_index > 0 ? myFunction(myType) : defaultValue
+```
+
+### **Pine Script v6 Syntax Rules Interactions (CRITICAL)**
+
+Pine Script v6 syntax rules can **interact and cascade**, requiring careful attention to **multiple constraints simultaneously**:
+
+#### **✅ CORRECT: Combining Type History + Single Line Requirements**
+```pinescript
+// Complex conditions must be single line despite length
+prevType = myType[1]  // Get historical type first
+condition = ta.crossover(close, prevType.value) and prevType.value == high[1] and close > prevType.threshold and not prevType.isActive and prevType.status == "ready"
+
+// Alternative: Break into multiple single-line statements
+prevType = myType[1]
+crossCondition = ta.crossover(close, prevType.value)
+levelCondition = prevType.value == high[1] 
+thresholdCondition = close > prevType.threshold
+statusCondition = not prevType.isActive and prevType.status == "ready"
+finalCondition = crossCondition and levelCondition and thresholdCondition and statusCondition
+```
+
+#### **❌ INCORRECT: Multiple syntax violations**
+```pinescript
+// ERROR 1: Multi-line continuation + ERROR 2: Wrong type history syntax
+condition = ta.crossover(close, myType.value[1]) and 
+            myType.value[1] == high[1] and 
+            close > myType.threshold and 
+            not myType.isActive
+// This has BOTH line continuation AND incorrect type history syntax
+```
+
+### **Pine Script v6 Type System Limitations (MUST FOLLOW)**
+
+Pine Script v6 has **specific limitations** that differ from traditional OOP languages:
+
+#### **✅ SUPPORTED (Correct Usage):**
+testSuiteCompliance.addTest("Conditional Execution Validation",
+noFunctionCallsInConditionals,
+"No ta.* or math.* function calls inside if statements",
+na, na, "Platform", "Critical")
+
+testSuiteCompliance.addTest("Type Field History Validation",
+noDirectFieldHistory,
+"Cannot use object.field[1] syntax on user-defined types",
+na, na, "Platform", "Critical")
+
+testSuiteCompliance.addTest("Input Statement Syntax",
+allInputStatementsSingleLine,
+"Input statements must be single line to avoid continuation errors",
+na, na, "Platform", "Critical")
+
+testSuiteCompliance.addTest("Performance Constraint Compliance",
+executionTime <= maxExecutionTime,
+"Must execute within TradingView performance limits",
+maxExecutionTime, executionTime, "Platform", "Critical")
+```pinescript
+// Types with fields only
+type MyManager
+    float value
+    bool active
+    string status
+
+// Separate functions that operate on types
+updateManager(MyManager manager, float newValue) =>
+    manager.value := newValue
+    manager.active := true
+
+// Usage
+var mgr = MyManager.new(0.0, false, "")
+updateManager(mgr, 100.0)  // Correct function call
+```
+
+#### **❌ NOT SUPPORTED (Will Cause Compilation Errors):**
+```pinescript
+// Methods inside types (INVALID)
+type BadManager
+    float value
+    method updateValue(float newValue) =>  // ERROR: "method" not valid
+        this.value := newValue
+
+// Inheritance (INVALID)
+type BaseManager
+    float value
+type ExtendedManager extends BaseManager  // ERROR: extends not supported
+    bool active
+
+// Class syntax (INVALID)
+class MyClass  // ERROR: class keyword doesn't exist
+    float value
+
+// Access modifiers (INVALID)
+type MyType
+    private float value  // ERROR: private not supported
+    public bool active   // ERROR: public not supported
+```
+
+#### **Critical Pine Script v6 Function Parameter Requirements:**
+```pinescript
+// ✅ CORRECT: Fill function signature (plot1, plot2, color, title)
+fill(plot1, plot2, color.new(color.blue, 90), title="Fill Title")
+
+// ❌ INCORRECT: Wrong fill function signature
+fill(plot1, plot2, color1, color2, title="Title")  // ERROR: Too many color parameters
+
+// ✅ CORRECT: Bgcolor function with pre-calculated color
+riskColor = condition ? color.red : color.green
+bgcolor(riskColor, title="Background")
+
+// ❌ INCORRECT: Complex condition in bgcolor (line continuation error)
+bgcolor(condition1 ? color.red : 
+        condition2 ? color.orange : na,  // ERROR: Line continuation
+        title="Background")
+
+// ✅ CORRECT: Plot function parameter order and types
+plot(series, title="Title", color=color.blue, linewidth=2, style=plot.style_line)
+
+// ❌ INCORRECT: Missing named parameters
+plot(series, "Title", color.blue, 2, plot.style_line)  // May cause errors
+
+// ✅ CORRECT: Plotchar function with named parameters
+plotchar(condition, title="Title", char="⬥", location=location.absolute, 
+         color=color.lime, size=size.tiny, offset=-1)
+
+// ❌ INCORRECT: Positional parameters in wrong order
+plotchar(condition, "Title", "⬥", location.absolute, color.lime, size.tiny, offset=-1)
+
+// ✅ CORRECT: Common Pine Script function signatures
+plotshape(series, title, style, location, color, text, textcolor, size)
+alertcondition(condition, title, message)
+line.new(x1, y1, x2, y2, color=color, style=style, width=width)
+label.new(x, y, text, color=color, textcolor=textcolor, style=style, size=size)
+```
+
+#### **Critical Pine Script v6 String Type Requirements:**
+```pinescript
+// ✅ CORRECT: Const strings for plot functions
+plotshape(condition, "Entry", shape.labelup, location.belowbar, color.green, text="LONG")
+alertcondition(condition, "Alert", "Simple message without dynamic content")
+
+// ❌ INCORRECT: Series strings in plot functions (COMPILATION ERROR)
+plotshape(condition, "Entry", shape.labelup, location.belowbar, color.green, 
+          text="LONG " + str.tostring(value))  // ERROR: series string not allowed
+
+// ✅ CORRECT: Pre-calculate strings if needed (workaround)
+entryText = "LONG"  // Use simple const string
+plotshape(condition, "Entry", shape.labelup, location.belowbar, color.green, text=entryText)
+
+// ✅ CORRECT: Fill function with const colors
+fill(plot1, plot2, color.new(color.blue, 90), color.new(color.red, 95), title="Fill Title")
+
+// ❌ INCORRECT: Dynamic colors in fill function
+fill(plot1, plot2, color.new(isUpTrend ? color.blue : color.red, 90))  // ERROR: series color
+```
+
+#### **Critical Pine Script v6 Function Call Rules:**
+```pinescript
+// ✅ CORRECT: Pre-calculate function calls outside conditions
+rsiValue = ta.rsi(close, 14)  // Calculate once per bar
+if rsiValue > 70
+    // Use pre-calculated value
+
+// ❌ INCORRECT: Function calls inside conditions (INCONSISTENT EXECUTION)
+if ta.rsi(close, 14) > 70  // ERROR: May not execute every bar
+    // This can cause inconsistent calculations
+
+// ✅ CORRECT: Single line complex conditions
+longCondition = signal1 and signal2 and signal3 and filtersPass and strategy.position_size == 0
+
+// ❌ INCORRECT: Multi-line conditions (LINE CONTINUATION ERROR)
+longCondition = signal1 and 
+                signal2 and 
+                filtersPass  // ERROR: Line continuation
+
+// ✅ CORRECT: Alternative for very long conditions
+signal1Ready = trendSignal or meanRevSignal
+signal2Ready = confluence >= required
+longCondition = signal1Ready and signal2Ready and filtersPass and strategy.position_size == 0
+```
+
+#### **Critical Syntax Interaction Patterns:**
+1. **Type History + Line Length**: Long conditions with type history must stay single line
+2. **Complex Logic + Single Line**: Break complex conditions into multiple statements
+3. **Function Calls + Conditions**: Pre-calculate all function calls outside conditionals
+4. **Input Parameters + Tooltips**: Keep all input parameters on single line
+5. **Function Calls + Type Access**: Ensure proper syntax for both simultaneously
+6. **Multiple Constraints**: Always validate ALL syntax rules together
+
+#### **Common Runtime Errors to Avoid:**
+1. **"Cannot access field of undefined object"** - Initialize type fields on first bar
+2. **"Cannot access field of na object"** - Check bar_index before historical access
+3. **"Object is na"** - Ensure proper type initialization with safe defaults
+4. **"Historical reference on bar 0"** - Use bar_index > 0 checks
+5. **"Undefined field access"** - Initialize all type fields before use
+6. **"Na value in calculation"** - Add na() checks before mathematical operations
+
+#### **Common Compilation Errors to Avoid:**
+1. **"method" is not a valid type keyword** - Use separate functions
+2. **"class" is not a valid keyword** - Use type instead
+3. **"extends" is not supported** - No inheritance available
+4. **"private/public" not supported** - No access modifiers
+5. **Dot notation on custom types** - Only works with built-in types
+6. **"End of line without line continuation"** - Avoid multi-line statements
+7. **Shorttitle too long** - Must be ≤10 characters
+8. **Resource limit exceeded** - Stay within max_labels_count, max_lines_count limits
+9. **"Cannot use history operator on type fields"** - Use (object[1]).field instead of object.field[1]
+10. **Cascading syntax errors** - Fixing one error may create another
+11. **"Function call inside conditional might not execute on every bar"** - Pre-calculate all function calls
+12. **"Inconsistent calculations"** - Assign function results to variables first
+13. **"series string type used but const string expected"** - Use simple strings in plot functions
+14. **"series color type used but const color expected"** - Use simple colors in fill/plot functions
+15. **"Wrong argument type"** - Check parameter types and order in plot functions
+16. **"const color used but const string expected"** - Use named parameters (title=)
+17. **"literal string used but input bool expected"** - Check function parameter order
+18. **"Too many parameters in function call"** - Verify correct function signature
+19. **"Wrong parameter type for fill function"** - fill(plot1, plot2, color, title=) only
+
+### **Mandatory Runtime Validation Checklist (NEW):**
+- [ ] **All user-defined types initialized with safe defaults**
+- [ ] **Type fields initialized on first bar (bar_index == 0)**
+- [ ] **Historical access protected with bar_index > 0 checks**
+- [ ] **Na value checks before accessing type fields**
+- [ ] **Safe historical reference patterns used**
+- [ ] **Function calls protected with initialization checks**
+- [ ] **All calculations have na value protection**
+
+### **Mandatory Syntax Validation Checklist (Enhanced):**
+- [ ] All types contain only fields (no methods)
+- [ ] All functions are separate from type definitions
+- [ ] No usage of method, class, extends, private, public keywords
+- [ ] No dot notation calls on custom type instances (except .new())
+- [ ] **All statements are single line (no line continuation errors)**
+- [ ] **Complex conditions broken into multiple single-line statements when needed**
+- [ ] **All function calls pre-calculated outside conditional statements**
+- [ ] **No ta.* or math.* function calls inside if statements**
+- [ ] **All plot/alert functions use const strings only (no series strings)**
+- [ ] **All plot functions use const colors only (no series colors)**
+- [ ] **Plot function parameters use named parameters (title=, color=, etc.)**
+- [ ] **Function signatures validated against Pine Script v6 documentation**
+- [ ] **Fill function uses correct signature: fill(plot1, plot2, color, title=)**
+- [ ] **Function parameter order and types validated**
+- [ ] **Complex expressions pre-calculated before function calls**
+- [ ] **User-defined type history uses (object[1]).field syntax**
+- [ ] **No history operator directly on type fields (object.field[1])**
+- [ ] **All syntax rules validated together (no cascading errors)**
+- [ ] **Shorttitle is ≤10 characters**
+- [ ] Strategy compiles successfully on TradingView platform
+- [ ] **Strategy runs without runtime errors on first bar**
+- [ ] All Pine Script v6 syntax and runtime rules followed simultaneously
+  All strategies are developed with full Pine Script v6 compliance:
+- ✅ **Syntax Compliance**: All v6 requirements met
+- ✅ **Platform Compliance**: TradingView-specific constraints validated
+- ✅ **Compilation Validation**: Zero errors and warnings required
+- ✅ **Resource Constraints**: All platform limits respected
+- ✅ **Performance Optimization**: Efficient resource usage (400 lines vs 800)
+- ✅ **Error Handling**: Comprehensive validation and edge cases
+- ✅ **Best Practices**: Professional code standards with proper attribution
+
+#### **Critical Platform Constraints** (MANDATORY)
+- **Shorttitle Limit**: Maximum 10 characters (TradingView requirement)
+- **Resource Limits**: Respect max_labels_count, max_lines_count, max_bars_back
+- **Compilation Check**: Must compile without any errors or warnings
+- **Performance Constraints**: Efficient execution within platform limits
+- **Memory Usage**: Optimized for TradingView resource allocation
+
+#### **Pre-Deployment Validation Checklist**
+- [ ] Strategy compiles successfully on TradingView
+- [ ] Shorttitle ≤10 characters
+- [ ] No compilation errors or warnings
+- [ ] All resource limits within platform constraints
+- [ ] Performance testing on actual TradingView platform
+- [ ] Real-time execution validation
+
 #### **Enhanced Features for Scalping:**
 - **Ultra-Low Latency Execution**: Optimized for speed
 - **Micro-Structure Analysis**: Tick-level market reading
