@@ -1,0 +1,249 @@
+// Volume Flow Analysis Indicator - EXPERIMENTAL
+// Institutional interest detection for scalping enhancement
+// Designed to complement BTC True Scalping strategy
+//
+// ⚠️ EXPERIMENTAL WARNING: Testing lab development - validation required
+//
+// License: MIT License - Educational/Experimental Use Only
+//
+// Contributors:
+// © TradingView Community - Volume analysis concepts
+// © Claude AI - Institutional flow detection implementation
+// © iamrichardD - Testing lab integration and validation
+//
+//@version=6
+
+indicator("Volume Flow Analysis [EXPERIMENTAL]", "VFA_EXP", overlay=false, max_lines_count=100)
+
+//=====================================================================================================================
+// 🚧 EXPERIMENTAL DEVELOPMENT NOTICE
+//=====================================================================================================================
+// This indicator is under active development in the testing lab
+// Purpose: Detect institutional volume flows for scalping signal enhancement
+// Status: Experimental - requires comprehensive validation
+
+//=====================================================================================================================
+// 📊 VOLUME FLOW PARAMETERS
+//=====================================================================================================================
+grpVolume = "📊 Volume Flow Settings"
+volumePeriod = input.int(20, "Volume MA Period", minval=5, maxval=100, group=grpVolume, tooltip="Base volume calculation")
+spikeThreshold = input.float(2.0, "Spike Threshold", minval=1.2, maxval=5.0, step=0.1, group=grpVolume, tooltip="Volume spike multiplier")
+flowSensitivity = input.float(0.7, "Flow Sensitivity", minval=0.1, maxval=1.0, step=0.1, group=grpVolume, tooltip="Institutional flow detection")
+
+grpFlow = "🌊 Institutional Flow"
+enableFlowDetection = input.bool(true, "Enable Flow Detection", group=grpFlow)
+largeOrderThreshold = input.float(3.0, "Large Order Threshold", minval=2.0, maxval=10.0, step=0.5, group=grpFlow, tooltip="Large institutional order detection")
+flowPersistence = input.int(3, "Flow Persistence", minval=1, maxval=10, group=grpFlow, tooltip="Bars to confirm flow")
+
+grpScalping = "⚡ Scalping Integration"
+enableScalpingSignals = input.bool(true, "Scalping Signals", group=grpScalping, tooltip="Integration with BTC True Scalping")
+scalpingSensitivity = input.float(1.5, "Scalping Sensitivity", minval=1.0, maxval=3.0, step=0.1, group=grpScalping)
+
+//=====================================================================================================================
+// 📈 VOLUME CALCULATIONS
+//=====================================================================================================================
+// Base volume metrics
+volumeMA = ta.sma(volume, volumePeriod)
+volumeRatio = volume / volumeMA
+volumeSpike = volumeRatio >= spikeThreshold
+
+// Price-volume relationship
+priceChange = close - close[1]
+volumeWeightedPrice = priceChange * volume
+avgVolumeWeightedPrice = ta.sma(volumeWeightedPrice, volumePeriod)
+
+// Volume momentum
+volumeMomentum = volume - volume[1]
+volumeAcceleration = volumeMomentum - volumeMomentum[1]
+
+//=====================================================================================================================
+// 🌊 INSTITUTIONAL FLOW DETECTION
+//=====================================================================================================================
+// Large order detection (institutional interest)
+largeOrder = volumeRatio >= largeOrderThreshold
+largeOrderBullish = largeOrder and priceChange > 0
+largeOrderBearish = largeOrder and priceChange < 0
+
+// Flow persistence (sustained institutional interest)
+var int bullishFlowCount = 0
+var int bearishFlowCount = 0
+
+if largeOrderBullish
+    bullishFlowCount := bullishFlowCount + 1
+    bearishFlowCount := 0
+else if largeOrderBearish
+    bearishFlowCount := bearishFlowCount + 1
+    bullishFlowCount := 0
+else
+    bullishFlowCount := math.max(0, bullishFlowCount - 1)
+    bearishFlowCount := math.max(0, bearishFlowCount - 1)
+
+// Institutional flow confirmation
+institutionalBullFlow = enableFlowDetection and bullishFlowCount >= flowPersistence
+institutionalBearFlow = enableFlowDetection and bearishFlowCount >= flowPersistence
+
+//=====================================================================================================================
+// ⚡ SCALPING SIGNAL INTEGRATION
+//=====================================================================================================================
+// Volume-based scalping enhancement signals
+scalpVolumeSignal = volumeSpike and volumeRatio >= scalpingSensitivity
+scalpFlowBullish = enableScalpingSignals and institutionalBullFlow and priceChange > 0
+scalpFlowBearish = enableScalpingSignals and institutionalBearFlow and priceChange < 0
+
+// Combined scalping volume signal
+scalpVolumeConfirmation = scalpVolumeSignal and (scalpFlowBullish or scalpFlowBearish)
+
+//=====================================================================================================================
+// 📊 VOLUME FLOW VISUALIZATION
+//=====================================================================================================================
+// Volume ratio plot with threshold levels
+plot(volumeRatio, "Volume Ratio", color=volumeSpike ? color.orange : color.gray, linewidth=2)
+hline(spikeThreshold, "Spike Threshold", color=color.red, linestyle=hline.style_dashed)
+hline(1.0, "Average Volume", color=color.gray, linestyle=hline.style_solid)
+
+// Institutional flow indicators
+plotshape(institutionalBullFlow, "Institutional Bull Flow", shape.triangleup, location.bottom,
+          color=color.green, size=size.normal, text="INST↑")
+plotshape(institutionalBearFlow, "Institutional Bear Flow", shape.triangledown, location.top,
+          color=color.red, size=size.normal, text="INST↓")
+
+// Large order detection
+plotshape(largeOrderBullish, "Large Bull Order", shape.circle, location.bottom,
+          color=color.lime, size=size.small, text="L")
+plotshape(largeOrderBearish, "Large Bear Order", shape.circle, location.top,
+          color=color.orange, size=size.small, text="L")
+
+// Scalping integration signals
+plotshape(scalpVolumeConfirmation and scalpFlowBullish, "Scalp Volume Bull", shape.labelup, location.bottom,
+          color=color.green, textcolor=color.white, text="⚡V", size=size.small)
+plotshape(scalpVolumeConfirmation and scalpFlowBearish, "Scalp Volume Bear", shape.labeldown, location.top,
+          color=color.red, textcolor=color.white, text="⚡V", size=size.small)
+
+// Background highlighting for institutional activity
+bgcolor(institutionalBullFlow ? color.new(color.green, 95) :
+        institutionalBearFlow ? color.new(color.red, 95) : na, title="Institutional Flow")
+
+//=====================================================================================================================
+// 📊 VOLUME FLOW DASHBOARD
+//=====================================================================================================================
+if barstate.islast
+    var table volumeTable = table.new(position.top_left, 2, 10, bgcolor=color.white, border_width=1)
+
+    // Headers
+    table.cell(volumeTable, 0, 0, "🌊 VOLUME FLOW", text_color=color.white, bgcolor=color.blue)
+    table.cell(volumeTable, 1, 0, "STATUS", text_color=color.white, bgcolor=color.blue)
+
+    // Current volume metrics
+    table.cell(volumeTable, 0, 1, "Volume Ratio", text_color=color.black)
+    table.cell(volumeTable, 1, 1, str.tostring(volumeRatio, "#.##") + "x",
+               text_color=volumeSpike ? color.orange : color.gray)
+
+    table.cell(volumeTable, 0, 2, "Volume Spike", text_color=color.black)
+    table.cell(volumeTable, 1, 2, volumeSpike ? "⚡ ACTIVE" : "📉 NORMAL",
+               text_color=volumeSpike ? color.orange : color.gray)
+
+    // Institutional flow status
+    table.cell(volumeTable, 0, 3, "Institutional Flow", text_color=color.black)
+    flowStatus = institutionalBullFlow ? "📈 BULLISH" : institutionalBearFlow ? "📉 BEARISH" : "➡️ NEUTRAL"
+    flowColor = institutionalBullFlow ? color.green : institutionalBearFlow ? color.red : color.gray
+    table.cell(volumeTable, 1, 3, flowStatus, text_color=flowColor)
+
+    // Large order detection
+    table.cell(volumeTable, 0, 4, "Large Orders", text_color=color.black)
+    orderStatus = largeOrderBullish ? "🟢 BULL" : largeOrderBearish ? "🔴 BEAR" : "⚫ NONE"
+    orderColor = largeOrderBullish ? color.green : largeOrderBearish ? color.red : color.gray
+    table.cell(volumeTable, 1, 4, orderStatus, text_color=orderColor)
+
+    // Flow persistence
+    table.cell(volumeTable, 0, 5, "Bull Flow Count", text_color=color.black)
+    table.cell(volumeTable, 1, 5, str.tostring(bullishFlowCount),
+               text_color=bullishFlowCount >= flowPersistence ? color.green : color.gray)
+
+    table.cell(volumeTable, 0, 6, "Bear Flow Count", text_color=color.black)
+    table.cell(volumeTable, 1, 6, str.tostring(bearishFlowCount),
+               text_color=bearishFlowCount >= flowPersistence ? color.red : color.gray)
+
+    // Scalping integration
+    table.cell(volumeTable, 0, 7, "Scalp Signal", text_color=color.black)
+    scalpStatus = scalpVolumeConfirmation ? "⚡ READY" : "⏳ WAIT"
+    scalpColor = scalpVolumeConfirmation ? color.orange : color.gray
+    table.cell(volumeTable, 1, 7, scalpStatus, text_color=scalpColor)
+
+    // Experimental warning
+    table.cell(volumeTable, 0, 8, "⚠️ STATUS", text_color=color.black)
+    table.cell(volumeTable, 1, 8, "EXPERIMENTAL", text_color=color.red)
+
+    // Flow direction
+    table.cell(volumeTable, 0, 9, "Flow Direction", text_color=color.black)
+    direction = scalpFlowBullish ? "⚡ BULL" : scalpFlowBearish ? "⚡ BEAR" : "➡️ NEUTRAL"
+    dirColor = scalpFlowBullish ? color.green : scalpFlowBearish ? color.red : color.gray
+    table.cell(volumeTable, 1, 9, direction, text_color=dirColor)
+
+//=====================================================================================================================
+// 🚨 EXPERIMENTAL ALERTS
+//=====================================================================================================================
+if institutionalBullFlow and not institutionalBullFlow[1]
+    alert("🌊 Institutional BULLISH flow detected - Large orders accumulating!", alert.freq_once_per_bar)
+
+if institutionalBearFlow and not institutionalBearFlow[1]
+    alert("🌊 Institutional BEARISH flow detected - Large orders distributing!", alert.freq_once_per_bar)
+
+if scalpVolumeConfirmation
+    flowDirection = scalpFlowBullish ? "BULLISH" : "BEARISH"
+    alert("⚡ Volume scalping signal: " + flowDirection + " institutional flow confirmed!", alert.freq_once_per_bar)
+
+//=====================================================================================================================
+// 📈 VOLUME FLOW ANALYSIS SUMMARY:
+//=====================================================================================================================
+//
+// 🎯 PURPOSE & INTEGRATION:
+// =========================
+// This experimental indicator detects institutional volume flows to enhance
+// the BTC True Scalping strategy with volume-based confirmation signals.
+//
+// 🔬 KEY FEATURES:
+// ===============
+// • Volume Spike Detection: 2x+ average volume threshold
+// • Institutional Flow Analysis: Large order detection and persistence
+// • Price-Volume Relationship: Volume-weighted price movements
+// • Scalping Integration: Signals designed for 5-30 minute holds
+// • Flow Persistence: Multi-bar confirmation to filter noise
+//
+// 📊 SIGNAL TYPES:
+// ===============
+// • Volume Spikes: 2x+ average volume (orange line)
+// • Large Orders: 3x+ volume with price movement (circles)
+// • Institutional Flow: Sustained large orders (triangles)
+// • Scalping Signals: Combined volume + flow confirmation (⚡V labels)
+//
+// ⚡ SCALPING INTEGRATION:
+// =======================
+// Designed to work with BTC True Scalping v1.0 strategy:
+// • Confirms volume support for ultra-fast entries
+// • Identifies institutional interest for higher probability trades
+// • Provides additional filter for 0.15%/0.30% risk management
+// • Enhances 5-30 minute holding period optimization
+//
+// 🧪 EXPERIMENTAL STATUS:
+// ======================
+// This is experimental development code requiring:
+// • Comprehensive backtesting validation
+// • Integration testing with BTC True Scalping strategy
+// • Performance impact assessment on win rate and frequency
+// • Real-time execution testing in paper trading environment
+//
+// 🎯 EXPECTED ENHANCEMENT:
+// =======================
+// Target improvements for BTC True Scalping:
+// • Higher signal quality through volume confirmation
+// • Reduced false signals during low institutional interest
+// • Enhanced entry timing with volume spike detection
+// • Improved risk management through flow analysis
+//
+// ⚠️ USAGE WARNING:
+// =================
+// EXPERIMENTAL INDICATOR - Paper trading validation required
+// Not recommended for live trading until comprehensive testing complete
+// Must be validated in conjunction with BTC True Scalping strategy
+//
+//=====================================================================================================================
