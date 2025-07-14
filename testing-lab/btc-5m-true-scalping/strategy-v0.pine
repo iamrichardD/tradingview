@@ -1,0 +1,226 @@
+// BTC Futures MACD Strategy - Enhanced Visual Signals
+// PROMINENT entry/exit markers for clear trading signals
+// Optimized for Coinbase Nano Bitcoin Futures with fixed contract sizing (5/20/40)
+// Educational strategy - requires backtesting and verification before live use
+//
+// License: MIT License
+//
+// Contributors:
+// © TradingView Community - MACD indicator methodology
+// © AI Assistant - Strategy implementation and enhanced visual signals
+// © iamrichardD - Testing, validation & iterative improvement - https://github.com/iamrichardD
+//
+//@version=6
+strategy("BTC Futures MACD [5M]", "BTC_MACD", overlay=false,
+         default_qty_type=strategy.fixed, default_qty_value=5,
+         commission_type=strategy.commission.percent, commission_value=0.05,
+         slippage=1, calc_on_every_tick=true, calc_on_order_fills=false,
+         max_bars_back=200, process_orders_on_close=true, scale=scale.right)
+
+//=====================================================================================================================
+// ENHANCED INPUT SETTINGS WITH CONTRACT SIZING OPTIONS
+//=====================================================================================================================
+grpMACD = "📊 MACD Settings"
+fastLength = input.int(8, "Fast Length", minval=6, maxval=15, group=grpMACD)
+slowLength = input.int(21, "Slow Length", minval=15, maxval=35, group=grpMACD)
+signalLength = input.int(5, "Signal Length", minval=3, maxval=15, group=grpMACD)
+
+grpSizing = "📏 Position Sizing Strategy"
+positionSizeOptions = input.string("Conservative", "Position Size",
+                                  options=["Conservative", "Moderate", "Aggressive", "Custom"], group=grpSizing,
+                                  tooltip="Conservative=5 contracts, Moderate=20 contracts, Aggressive=40 contracts")
+customContracts = input.int(5, "Custom Contracts", minval=1, maxval=100, group=grpSizing,
+                           tooltip="Only used when Position Size is set to 'Custom'")
+
+grpSignals = "🎯 Signal Settings"
+useZeroCross = input.bool(true, "MACD Zero Line Cross", group=grpSignals)
+useSignalCross = input.bool(true, "MACD Signal Line Cross", group=grpSignals)
+useEarlySignals = input.bool(false, "Enable Early Momentum Signals", group=grpSignals)
+momentumThreshold = input.float(0.25, "Momentum Threshold", minval=0.05, maxval=0.5, step=0.05, group=grpSignals)
+
+grpRisk = "🛡️ Risk Management"
+stopLossPercent = input.float(1.8, "Stop Loss %", minval=0.5, maxval=3.0, step=0.1, group=grpRisk)
+takeProfitPercent = input.float(2.7, "Take Profit %", minval=1.0, maxval=4.0, step=0.1, group=grpRisk)
+maxDailyTrades = input.int(12, "Max Daily Trades", minval=5, maxval=100, group=grpRisk)
+
+grpFilters = "🔍 Signal Filters"
+useVolumeFilter = input.bool(true, "Enable Volume Filter", group=grpFilters)
+volumeThreshold = input.float(1.5, "Volume Threshold (x avg)", minval=1.0, maxval=3.0, step=0.1, group=grpFilters)
+useTrendFilter = input.bool(true, "Enable Trend Filter", group=grpFilters)
+trendLength = input.int(20, "Trend MA Length", minval=10, maxval=100, group=grpFilters)
+useShortBias = input.bool(true, "Disable Short Trades", group=grpFilters)
+
+//=====================================================================================================================
+// SIMPLIFIED CONTRACT SIZE CALCULATION
+//=====================================================================================================================
+// Simple, fixed contract sizing based on trading strategy
+getContractSize() =>
+    switch positionSizeOptions
+        "Conservative" => 5   // Safe position for testing/low volatility
+        "Moderate" => 20      // Standard trading position
+        "Aggressive" => 40    // High conviction trades
+        "Custom" => customContracts
+        => 5  // Default to conservative
+
+// Get the contract size for current trade
+contractSize = getContractSize()
+
+//=====================================================================================================================
+// MACD CALCULATION (SAME AS ORIGINAL)
+//=====================================================================================================================
+[macdLine, signalLine, histogramLine] = ta.macd(close, fastLength, slowLength, signalLength)
+
+// Use previous bar data to avoid look-ahead bias
+macdPrev = macdLine[1]
+signalPrev = signalLine[1]
+macdPrev2 = macdLine[2]
+signalPrev2 = signalLine[2]
+
+// Signal detection
+macdZeroCrossUp = macdPrev > 0 and macdPrev2 <= 0
+macdZeroCrossDown = macdPrev < 0 and macdPrev2 >= 0
+macdSignalCrossUp = macdPrev > signalPrev and macdPrev2 <= signalPrev2
+macdSignalCrossDown = macdPrev < signalPrev and macdPrev2 >= signalPrev2
+
+//=====================================================================================================================
+// TRADE TRACKING (SAME AS ORIGINAL)
+//=====================================================================================================================
+var int dailyTrades = 0
+var float entryPrice = na
+var string currentSignalType = ""
+
+// Reset daily counter
+newDay = ta.change(dayofweek) != 0
+if newDay
+    dailyTrades := 0
+
+// Track trades
+if strategy.closedtrades > strategy.closedtrades[1]
+    dailyTrades := dailyTrades + 1
+
+// Risk filter
+riskOK = dailyTrades < maxDailyTrades
+
+//=====================================================================================================================
+// SIGNAL GENERATION WITH FILTERS (SAME AS ORIGINAL)
+//=====================================================================================================================
+// Volume and trend filters
+avgVolume = ta.sma(volume, 20)
+volumeCondition = not useVolumeFilter or volume > avgVolume * volumeThreshold
+
+trendMA = ta.sma(close, trendLength)
+bullishTrend = not useTrendFilter or close > trendMA
+bearishTrend = not useTrendFilter or close < trendMA
+
+// Raw signals
+longZeroSignal = useZeroCross and macdZeroCrossUp
+longSignalSignal = useSignalCross and macdSignalCrossUp
+shortZeroSignal = useZeroCross and macdZeroCrossDown
+shortSignalSignal = useSignalCross and macdSignalCrossDown
+
+// Apply filters to signals
+rawLongSignal = (longZeroSignal or longSignalSignal) and volumeCondition and bullishTrend
+rawShortSignal = (shortZeroSignal or shortSignalSignal) and volumeCondition and bearishTrend and not useShortBias
+
+// Enhanced final signals
+finalLongSignal = rawLongSignal and riskOK and strategy.position_size == 0
+finalShortSignal = rawShortSignal and riskOK and strategy.position_size == 0
+
+//=====================================================================================================================
+// STRATEGY EXECUTION WITH CORRECT CONTRACT SIZING
+//=====================================================================================================================
+// Enter positions with calculated contract size
+if finalLongSignal
+    strategy.entry("Long", strategy.long, qty=contractSize, comment="MACD Long (" + str.tostring(contractSize) + ")")
+
+if finalShortSignal
+    strategy.entry("Short", strategy.short, qty=contractSize, comment="MACD Short (" + str.tostring(contractSize) + ")")
+
+// Calculate position levels
+if strategy.position_size != 0
+    entryPrice := strategy.position_avg_price
+    stopLossPrice = strategy.position_size > 0 ? entryPrice * (1 - stopLossPercent / 100) : entryPrice * (1 + stopLossPercent / 100)
+    takeProfitPrice = strategy.position_size > 0 ? entryPrice * (1 + takeProfitPercent / 100) : entryPrice * (1 - takeProfitPercent / 100)
+
+    // Exit positions
+    if strategy.position_size > 0
+        strategy.exit("Long Exit", "Long", stop=stopLossPrice, limit=takeProfitPrice)
+    if strategy.position_size < 0
+        strategy.exit("Short Exit", "Short", stop=stopLossPrice, limit=takeProfitPrice)
+
+//=====================================================================================================================
+// ENHANCED VISUALIZATION WITH CONTRACT INFO
+//=====================================================================================================================
+// Plot MACD
+macdPlot = plot(macdLine, "MACD Line", color.blue, 2)
+signalPlot = plot(signalLine, "Signal Line", color.red, 2)
+plot(histogramLine, "Histogram", color.gray, style=plot.style_histogram)
+hline(0, "Zero Line", color.black)
+
+// Entry signals with contract size info
+plotshape(finalLongSignal, "LONG ENTRY", shape.triangleup, location.belowbar,
+          color=color.lime, size=size.large, text="LONG")
+plotshape(finalShortSignal, "SHORT ENTRY", shape.triangledown, location.abovebar,
+          color=color.red, size=size.large, text="SHORT")
+
+//=====================================================================================================================
+// ENHANCED PERFORMANCE DASHBOARD
+//=====================================================================================================================
+if barstate.islast
+    var table perfTable = table.new(position.top_right, 2, 13, bgcolor=color.white, border_width=2)
+
+    // Headers
+    table.cell(perfTable, 0, 0, "📊 BTC FUTURES MACD", text_color=color.white, bgcolor=color.navy)
+    table.cell(perfTable, 1, 0, "STATUS", text_color=color.white, bgcolor=color.navy)
+
+    // Performance metrics
+    winRate = strategy.wintrades / math.max(strategy.closedtrades, 1) * 100
+    currentNotional = strategy.position_size * close * 0.01
+
+    table.cell(perfTable, 0, 1, "Account Balance", text_color=color.black)
+    table.cell(perfTable, 1, 1, "$" + str.tostring(strategy.equity, "#,###"), text_color=color.green)
+
+    table.cell(perfTable, 0, 2, "Total Trades", text_color=color.black)
+    table.cell(perfTable, 1, 2, str.tostring(strategy.closedtrades), text_color=color.black)
+
+    table.cell(perfTable, 0, 3, "Win Rate", text_color=color.black)
+    table.cell(perfTable, 1, 3, str.tostring(winRate, "#.#") + "%",
+               text_color=winRate > 50 ? color.green : color.red)
+
+    table.cell(perfTable, 0, 4, "Net Profit", text_color=color.black)
+    table.cell(perfTable, 1, 4, "$" + str.tostring(strategy.netprofit, "#,###"),
+               text_color=strategy.netprofit > 0 ? color.green : color.red)
+
+    table.cell(perfTable, 0, 5, "Position Size", text_color=color.black)
+    table.cell(perfTable, 1, 5, str.tostring(math.abs(strategy.position_size)) + " contracts",
+               text_color=strategy.position_size != 0 ? color.blue : color.gray)
+
+    table.cell(perfTable, 0, 6, "Notional Value", text_color=color.black)
+    table.cell(perfTable, 1, 6, "$" + str.tostring(math.abs(currentNotional), "#,###"),
+               text_color=strategy.position_size != 0 ? color.blue : color.gray)
+
+    table.cell(perfTable, 0, 7, "Next Trade Size", text_color=color.black)
+    table.cell(perfTable, 1, 7, str.tostring(contractSize) + " contracts", text_color=color.orange)
+
+    table.cell(perfTable, 0, 8, "Est. Notional", text_color=color.black)
+    table.cell(perfTable, 1, 8, "$" + str.tostring(contractSize * close * 0.01, "#,###"), text_color=color.orange)
+
+    table.cell(perfTable, 0, 9, "Daily Trades", text_color=color.black)
+    table.cell(perfTable, 1, 9, str.tostring(dailyTrades) + "/" + str.tostring(maxDailyTrades),
+               text_color=dailyTrades < maxDailyTrades ? color.green : color.red)
+
+    table.cell(perfTable, 0, 10, "MACD Status", text_color=color.black)
+    macdStatus = macdLine > 0 ? "BULLISH" : "BEARISH"
+    table.cell(perfTable, 1, 10, macdStatus, text_color=macdLine > 0 ? color.green : color.red)
+
+    table.cell(perfTable, 0, 12, "Position Sizing", text_color=color.black)
+    table.cell(perfTable, 1, 12, "Per Contract: " + str.tostring(strategy.equity * 0.04616 / close / 0.01, "#.##") + "%", text_color=color.blue)
+
+//=====================================================================================================================
+// ALERTS WITH CONTRACT SIZE INFO
+//=====================================================================================================================
+if finalLongSignal
+    alert("🚀 BTC LONG: " + str.tostring(contractSize) + " contracts (~$" + str.tostring(contractSize * close * 0.01, "#,###") + ")", alert.freq_once_per_bar)
+
+if finalShortSignal
+    alert("🎯 BTC SHORT: " + str.tostring(contractSize) + " contracts (~$" + str.tostring(contractSize * close * 0.01, "#,###") + ")", alert.freq_once_per_bar)

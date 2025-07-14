@@ -10,6 +10,7 @@ This directory contains experimental strategies, indicators, and trading tools u
 testing-lab/
 ├── README.md                          # This file
 ├── btc-5m-true-scalping/              # True scalping strategy development
+├── ema-ribbon-macd-hybrid/            # NEW: EMA Ribbon + MACD multi-layer system
 ├── experimental-indicators/           # Custom indicator development
 ├── risk-management-tools/             # Risk management system tests
 ├── performance-analytics/             # Performance measurement tools
@@ -21,7 +22,8 @@ testing-lab/
 ## 🎯 Current Active Projects
 
 ### 🚀 High Priority
-- [ ] **BTC 5M True Scalping Strategy** - Ultra-fast entry/exit system
+- [x] **BTC 5M True Scalping Strategy** - ✅ v1.0 Complete - Ultra-fast entry/exit system
+- [ ] **EMA Ribbon + MACD Hybrid** - 🔄 v1.1 Active Development - Multi-path signal system
 - [ ] **Volume Flow Analysis Indicator** - Institutional flow detection
 - [ ] **Dynamic Risk Management** - Adaptive position sizing
 
@@ -95,8 +97,8 @@ testing-lab/
 ## 📊 Testing Lab Metrics
 
 ### Current Status
-- **Active Projects**: 1
-- **Strategies in Development**: 1 (BTC True Scalping)
+- **Active Projects**: 2
+- **Strategies in Development**: 2 (BTC True Scalping, EMA Ribbon MACD Hybrid)
 - **Indicators in Research**: 0
 - **Graduated Strategies**: 2 (BTC MACD Long-Only, Market Structure 4H)
 - **Success Rate**: TBD
@@ -125,7 +127,7 @@ testing-lab/
 
 **⚠️ EXPERIMENTAL WARNING: All content in this testing lab is experimental and unproven. Use entirely at your own risk for educational purposes only. No guarantee of performance or safety.**
 
-*Testing Lab established: Current Date*  
-*Current Version: 1.0*  
-*Active Projects: 1*  
-*Safety Status: Experimental Only*
+*Testing Lab established: 2025-07-13*  
+*Current Version: 1.2*  
+*Active Projects: 2 (BTC True Scalping Complete, EMA Ribbon MACD v1.1 Active)*  
+*Safety Status: Experimental Only - Paper Trading Required*

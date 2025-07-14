@@ -1,0 +1,581 @@
+// EMA Ribbon + MACD Hybrid Strategy v1.0 - EXPERIMENTAL
+// Multi-layer signal system combining EMA ribbon trend analysis with MACD momentum
+// Transformation target: Enhanced trend filtering + reduced false signals
+//
+// ⚠️ EXPERIMENTAL WARNING: Testing lab only - paper trading required
+//
+// License: MIT License - Educational/Experimental Use Only
+//
+// Contributors:
+// © Saty Mahajan - Original EMA Ribbon methodology (Webull adaptation)
+// © TradingView Community - MACD methodology
+// © Claude AI - Hybrid strategy implementation and Pine Script v6 conversion
+// © iamrichardD - Testing lab validation and strategy refinement
+//
+//@version=6
+
+strategy("EMA Ribbon MACD v1", "RIBBON_v1", overlay=false,
+         default_qty_type=strategy.percent_of_equity, default_qty_value=2,
+         commission_type=strategy.commission.percent, commission_value=0.05,
+         slippage=1, calc_on_every_tick=true, calc_on_order_fills=true,
+         max_bars_back=200, process_orders_on_close=false, scale=scale.right)
+
+//=====================================================================================================================
+// 🚧 EXPERIMENTAL WARNING
+//=====================================================================================================================
+// This is experimental development code in testing lab
+// DO NOT USE FOR LIVE TRADING - PAPER TRADING ONLY
+// Target: Enhanced trend filtering + superior signal quality
+
+//=====================================================================================================================
+// 📊 EMA RIBBON CONFIGURATION
+//=====================================================================================================================
+grpRibbon = "📊 EMA Ribbon System"
+fastEmaLen = input.int(8, "Fast EMA Length", minval=5, maxval=15, group=grpRibbon, tooltip="Primary trend EMA")
+pivotEmaLen = input.int(21, "Pivot EMA Length", minval=15, maxval=30, group=grpRibbon, tooltip="Key support/resistance")
+slowEmaLen = input.int(34, "Slow EMA Length", minval=25, maxval=50, group=grpRibbon, tooltip="Long-term trend filter")
+
+// SMA Context Analysis
+grpSma = "🏗️ SMA Context Levels"
+useSmaFilter = input.bool(true, "Enable SMA Context Filter", group=grpSma)
+sma50Len = input.int(50, "SMA 50 Length", minval=30, maxval=70, group=grpSma)
+sma100Len = input.int(100, "SMA 100 Length", minval=80, maxval=120, group=grpSma)
+sma200Len = input.int(200, "SMA 200 Length", minval=150, maxval=250, group=grpSma)
+
+//=====================================================================================================================
+// 🌊 MACD MOMENTUM SYSTEM
+//=====================================================================================================================
+grpMACD = "🌊 MACD Momentum"
+macdFast = input.int(8, "MACD Fast", minval=6, maxval=15, group=grpMACD, tooltip="Proven 8,21,5 system")
+macdSlow = input.int(21, "MACD Slow", minval=15, maxval=35, group=grpMACD)
+macdSignal = input.int(5, "MACD Signal", minval=3, maxval=15, group=grpMACD)
+
+// MACD Signal Types
+grpSignals = "🎯 MACD Signals"
+useZeroCross = input.bool(true, "MACD Zero Cross", group=grpSignals)
+useSignalCross = input.bool(true, "MACD Signal Cross", group=grpSignals)
+useMomentumSignals = input.bool(false, "Early Momentum", group=grpSignals)
+momentumThreshold = input.float(0.2, "Momentum Threshold", minval=0.05, maxval=0.5, step=0.05, group=grpSignals)
+
+// Early Entry System
+grpEarly = "⚡ Early Entry System"
+useEarlyEntry = input.bool(true, "Enable Early Entry Signals", group=grpEarly, tooltip="Catch high-probability setups before full confirmation")
+useVolumeFilterEarly = input.bool(false, "Enable Volume Filter for Early Entry", group=grpEarly, tooltip="OFF = more signals, ON = higher quality")
+useAggressiveMacd = input.bool(false, "Enable Aggressive MACD Threshold", group=grpEarly, tooltip="OFF = conservative (-0.15), ON = aggressive (-0.05)")
+earlyReversalBars = input.int(2, "Reversal Pattern Bars", minval=1, maxval=5, group=grpEarly)
+useSimpleReversal = input.bool(true, "Use Simple Reversal (vs Strict)", group=grpEarly, tooltip="More aggressive reversal detection")
+useUltraEarly = input.bool(false, "Enable Ultra-Aggressive Mode", group=grpEarly, tooltip="Maximum sensitivity - catches more opportunities but may increase noise")
+useMultiplePaths = input.bool(true, "Enable Multiple Entry Paths", group=grpEarly, tooltip="Alternative signal paths for better opportunity capture")
+
+// Signal Filtering System
+grpFiltering = "🔄 Signal Filtering"
+useSignalCooldown = input.bool(true, "Enable Signal Cooldown", group=grpFiltering, tooltip="Prevent rapid-fire signals")
+signalCooldownBars = input.int(5, "Cooldown Period (bars)", minval=1, maxval=20, group=grpFiltering, tooltip="Minimum bars between signals")
+useSignalStrength = input.bool(true, "Enable Signal Strength Filter", group=grpFiltering, tooltip="Only allow signals when conditions are strong")
+preventRapidReversals = input.bool(true, "Prevent Rapid Reversals", group=grpFiltering, tooltip="Block opposite signals too quickly")
+
+//=====================================================================================================================
+// 🛡️ RISK MANAGEMENT
+//=====================================================================================================================
+grpRisk = "🛡️ Risk Management"
+stopLossPercent = input.float(1.5, "Stop Loss %", minval=0.5, maxval=3.0, step=0.1, group=grpRisk)
+takeProfitPercent = input.float(2.5, "Take Profit %", minval=1.0, maxval=4.0, step=0.1, group=grpRisk)
+maxDailyTrades = input.int(10, "Max Daily Trades", minval=3, maxval=50, group=grpRisk)
+
+// Trailing Stop System
+grpTrailing = "📈 Trailing Stop"
+useTrailingStop = input.bool(true, "Enable Trailing Stop", group=grpTrailing)
+trailingActivation = input.float(0.8, "Activation %", minval=0.3, maxval=1.5, step=0.1, group=grpTrailing)
+trailingDistance = input.float(0.4, "Trailing Distance %", minval=0.1, maxval=0.8, step=0.1, group=grpTrailing)
+
+//=====================================================================================================================
+// 🔍 SIGNAL FILTERS
+//=====================================================================================================================
+grpFilters = "🔍 Advanced Filters"
+useVolumeFilter = input.bool(true, "Volume Filter", group=grpFilters)
+volumeThreshold = input.float(1.3, "Volume Threshold (x avg)", minval=1.0, maxval=3.0, step=0.1, group=grpFilters)
+useRibbonStrength = input.bool(true, "Ribbon Strength Filter", group=grpFilters, tooltip="All EMAs must be aligned")
+minRibbonGap = input.float(0.1, "Min Ribbon Gap %", minval=0.05, maxval=0.5, step=0.05, group=grpFilters, tooltip="Minimum gap between EMAs")
+
+//=====================================================================================================================
+// 📊 EMA RIBBON CALCULATIONS
+//=====================================================================================================================
+// EMA Calculations
+fastEma = ta.ema(close, fastEmaLen)
+pivotEma = ta.ema(close, pivotEmaLen)
+slowEma = ta.ema(close, slowEmaLen)
+
+// SMA Context Levels
+sma50 = ta.sma(close, sma50Len)
+sma100 = ta.sma(close, sma100Len)
+sma200 = ta.sma(close, sma200Len)
+
+// EMA Ribbon Analysis (using previous bar to avoid look-ahead)
+fastEmaPrev = fastEma[1]
+pivotEmaPrev = pivotEma[1]
+slowEmaPrev = slowEma[1]
+closePrev = close[1]
+
+bullishRibbon = fastEmaPrev > pivotEmaPrev and pivotEmaPrev > slowEmaPrev
+bearishRibbon = fastEmaPrev < pivotEmaPrev and pivotEmaPrev < slowEmaPrev
+ribbonAligned = bullishRibbon or bearishRibbon
+
+// Ribbon Strength Analysis (using previous bar)
+fastPivotGap = math.abs(fastEmaPrev - pivotEmaPrev) / closePrev * 100
+pivotSlowGap = math.abs(pivotEmaPrev - slowEmaPrev) / closePrev * 100
+ribbonStrengthOk = not useRibbonStrength or (fastPivotGap >= minRibbonGap and pivotSlowGap >= minRibbonGap)
+
+// SMA Context Analysis (using previous bar)
+sma50Prev = sma50[1]
+sma200Prev = sma200[1]
+longTermBullish = not useSmaFilter or (sma50Prev > sma200Prev and closePrev > sma50Prev)
+longTermBearish = not useSmaFilter or (sma50Prev < sma200Prev and closePrev < sma50Prev)
+
+//=====================================================================================================================
+// 🌊 MACD MOMENTUM CALCULATIONS
+//=====================================================================================================================
+[macdLine, signalLine, histogramLine] = ta.macd(close, macdFast, macdSlow, macdSignal)
+
+// MACD Signal Detection (previous bar to avoid repainting)
+macdPrev = macdLine[1]
+signalPrev = signalLine[1]
+macdPrev2 = macdLine[2]
+signalPrev2 = signalLine[2]
+
+// Signal Types
+macdZeroCrossUp = macdPrev > 0 and macdPrev2 <= 0
+macdZeroCrossDown = macdPrev < 0 and macdPrev2 >= 0
+macdSignalCrossUp = macdPrev > signalPrev and macdPrev2 <= signalPrev2
+macdSignalCrossDown = macdPrev < signalPrev and macdPrev2 >= signalPrev2
+
+// Early Momentum Signals (using previous bar to avoid look-ahead)
+macdMomentumUp = useMomentumSignals and macdPrev > signalPrev and (macdPrev - macdPrev2) > momentumThreshold and macdPrev < 0
+macdMomentumDown = useMomentumSignals and macdPrev < signalPrev and (macdPrev - macdPrev2) < -momentumThreshold and macdPrev > 0
+
+//=====================================================================================================================
+// 🎯 MULTI-LAYER SIGNAL SYSTEM
+//=====================================================================================================================
+// Layer 1: EMA Ribbon Trend Direction
+layer1_ribbonLong = bullishRibbon and ribbonStrengthOk and longTermBullish
+layer1_ribbonShort = bearishRibbon and ribbonStrengthOk and longTermBearish
+
+// Layer 2: MACD Momentum Confirmation
+layer2_macdLong = (useZeroCross and macdZeroCrossUp) or (useSignalCross and macdSignalCrossUp) or macdMomentumUp
+layer2_macdShort = (useZeroCross and macdZeroCrossDown) or (useSignalCross and macdSignalCrossDown) or macdMomentumDown
+
+// Layer 3: Volume Confirmation (using previous bar to avoid look-ahead)
+avgVolume = ta.sma(volume, 20)
+volumePrev = volume[1]
+avgVolumePrev = avgVolume[1]
+layer3_volumeOk = not useVolumeFilter or volumePrev > avgVolumePrev * volumeThreshold
+
+// Layer 4: Risk Management
+var int dailyTrades = 0
+newDay = ta.change(dayofweek) != 0
+if newDay
+    dailyTrades := 0
+
+if strategy.closedtrades > strategy.closedtrades[1]
+    dailyTrades := dailyTrades + 1
+
+layer4_riskOk = dailyTrades < maxDailyTrades
+
+// Final Signal Generation
+rawLongSignal = layer1_ribbonLong and layer2_macdLong and layer3_volumeOk and layer4_riskOk
+rawShortSignal = layer1_ribbonShort and layer2_macdShort and layer3_volumeOk and layer4_riskOk
+
+//=====================================================================================================================
+// ⚡ EARLY ENTRY SYSTEM - ENHANCED MULTI-PATH
+//=====================================================================================================================
+// Dynamic MACD threshold based on user preference
+macdThreshold = useAggressiveMacd ? -0.05 : -0.15
+oversoldMacdTurning = (macdPrev < macdThreshold) and (macdPrev > macdPrev2)  // MACD turning up from oversold
+
+// PATH 1: Original Early Entry Conditions (Conservative)
+earlyBullishSetup = (closePrev > pivotEmaPrev) and (pivotEmaPrev > slowEmaPrev)  // Partial EMA alignment
+
+// Enhanced Reversal Pattern Options
+strictBullishReversal = (low[1] < low[2]) and (closePrev > open[1]) and (closePrev > close[2])  // Original strict pattern
+simpleBullishReversal = (closePrev > open[1]) and (closePrev > close[2])  // Simpler green candle after decline
+ultraBullishReversal = closePrev > close[2]  // Just require close above 2 bars ago
+momentumBullishReversal = (closePrev > open[1]) or (high[1] > high[2])  // Either bullish candle OR higher high
+
+// Select reversal pattern based on settings
+strongBullishReversal = useUltraEarly ? (momentumBullishReversal or ultraBullishReversal) : (useSimpleReversal ? simpleBullishReversal : strictBullishReversal)
+
+// PATH 2: Momentum-Based Entry (More Aggressive)
+priceAboveFast = closePrev > fastEmaPrev  // Just above fast EMA
+fastEmaTrendingUp = fastEmaPrev > fastEma[2]  // Fast EMA trending upward
+momentumSetup = priceAboveFast and fastEmaTrendingUp
+macdTurningPositive = macdPrev > macdPrev2  // Any upward momentum
+
+// PATH 3: Trend Continuation Entry (Alternative)
+trendContinuationSetup = closePrev > pivotEmaPrev  // Price above pivot only
+macdBelowZero = macdPrev < 0  // MACD still negative (oversold area)
+continuationReversal = useUltraEarly ? ultraBullishReversal : momentumBullishReversal
+
+// PATH 4: Pure Momentum Entry (Ultra-Aggressive)
+pureBreakout = closePrev > math.max(high[1], high[2])  // Breaking above recent highs
+volumeBurst = useVolumeFilterEarly ? volumePrev > avgVolumePrev * 1.5 : true  // Volume confirmation if enabled
+
+// Early Signal Generation Logic
+earlyVolumeOk = useVolumeFilterEarly ? layer3_volumeOk : true
+
+// Multiple early entry paths
+earlyPath1 = earlyBullishSetup and strongBullishReversal and oversoldMacdTurning  // Original path
+earlyPath2 = useMultiplePaths and momentumSetup and ultraBullishReversal and macdTurningPositive  // Momentum path
+earlyPath3 = useMultiplePaths and trendContinuationSetup and continuationReversal and macdBelowZero  // Trend continuation
+earlyPath4 = useUltraEarly and pureBreakout and volumeBurst and macdTurningPositive  // Pure momentum breakout
+
+// Combined early long signal
+earlyLongSignal = useEarlyEntry and (earlyPath1 or earlyPath2 or earlyPath3 or earlyPath4) and earlyVolumeOk and layer4_riskOk
+
+// BEARISH PATHS (Mirror logic for shorts)
+// PATH 1: Original Early Bearish Setup
+earlyBearishSetup = (closePrev < pivotEmaPrev) and (pivotEmaPrev < slowEmaPrev)  // Partial EMA alignment
+overboughtMacdTurning = (macdPrev > -macdThreshold) and (macdPrev < macdPrev2)  // MACD turning down from overbought
+
+// Enhanced Bearish Reversal Patterns
+strictBearishReversal = (high[1] > high[2]) and (closePrev < open[1]) and (closePrev < close[2])  // Original strict pattern
+simpleBearishReversal = (closePrev < open[1]) and (closePrev < close[2])  // Simpler red candle after rally
+ultraBearishReversal = closePrev < close[2]  // Just require close below 2 bars ago
+momentumBearishReversal = (closePrev < open[1]) or (low[1] < low[2])  // Either bearish candle OR lower low
+
+// Select bearish reversal pattern
+strongBearishReversal = useUltraEarly ? (momentumBearishReversal or ultraBearishReversal) : (useSimpleReversal ? simpleBearishReversal : strictBearishReversal)
+
+// PATH 2: Bearish Momentum Setup
+priceBelowFast = closePrev < fastEmaPrev  // Below fast EMA
+fastEmaTrendingDown = fastEmaPrev < fastEma[2]  // Fast EMA trending downward
+bearishMomentumSetup = priceBelowFast and fastEmaTrendingDown
+macdTurningNegative = macdPrev < macdPrev2  // Any downward momentum
+
+// PATH 3: Bearish Trend Continuation
+bearishContinuationSetup = closePrev < pivotEmaPrev  // Price below pivot only
+macdAboveZero = macdPrev > 0  // MACD still positive (overbought area)
+bearishContinuationReversal = useUltraEarly ? ultraBearishReversal : momentumBearishReversal
+
+// PATH 4: Pure Bearish Momentum
+pureBreakdown = closePrev < math.min(low[1], low[2])  // Breaking below recent lows
+
+// Bearish early entry paths
+earlyBearishPath1 = earlyBearishSetup and strongBearishReversal and overboughtMacdTurning  // Original path
+earlyBearishPath2 = useMultiplePaths and bearishMomentumSetup and ultraBearishReversal and macdTurningNegative  // Momentum path
+earlyBearishPath3 = useMultiplePaths and bearishContinuationSetup and bearishContinuationReversal and macdAboveZero  // Trend continuation
+earlyBearishPath4 = useUltraEarly and pureBreakdown and volumeBurst and macdTurningNegative  // Pure momentum breakdown
+
+// Combined early short signal
+earlyShortSignal = useEarlyEntry and (earlyBearishPath1 or earlyBearishPath2 or earlyBearishPath3 or earlyBearishPath4) and earlyVolumeOk and layer4_riskOk
+
+// Combined Signal System (Standard + Early Entry)
+combinedLongSignal = rawLongSignal or earlyLongSignal
+combinedShortSignal = rawShortSignal or earlyShortSignal
+
+//=====================================================================================================================
+// 🔄 SIGNAL FILTERING SYSTEM
+//=====================================================================================================================
+// Signal Cooldown System - Prevent rapid-fire signals
+var int lastLongSignalBar = -999
+var int lastShortSignalBar = -999
+var int lastSignalBar = -999
+
+// Track when signals occurred
+if combinedLongSignal and strategy.position_size <= 0
+    lastLongSignalBar := bar_index
+    lastSignalBar := bar_index
+
+if combinedShortSignal and strategy.position_size >= 0
+    lastShortSignalBar := bar_index
+    lastSignalBar := bar_index
+
+// Cooldown filters
+barsFromLastLong = bar_index - lastLongSignalBar
+barsFromLastShort = bar_index - lastShortSignalBar
+barsFromLastSignal = bar_index - lastSignalBar
+
+// Signal cooling filters
+longCooldownOk = not useSignalCooldown or barsFromLastLong >= signalCooldownBars
+shortCooldownOk = not useSignalCooldown or barsFromLastShort >= signalCooldownBars
+generalCooldownOk = not useSignalCooldown or barsFromLastSignal >= signalCooldownBars
+
+// Prevent rapid reversals (don't allow opposite signal too quickly)
+rapidReversalBlock = preventRapidReversals and barsFromLastSignal < signalCooldownBars
+longReversalOk = not rapidReversalBlock or barsFromLastShort >= signalCooldownBars
+shortReversalOk = not rapidReversalBlock or barsFromLastLong >= signalCooldownBars
+
+// Signal strength filter - Only allow signals when conditions are clearly strong
+signalStrengthLong = not useSignalStrength or (bullishRibbon and ribbonStrengthOk and longTermBullish and (macdPrev > macdPrev2 or macdPrev > -0.1))
+signalStrengthShort = not useSignalStrength or (bearishRibbon and ribbonStrengthOk and longTermBearish and (macdPrev < macdPrev2 or macdPrev < 0.1))
+
+// Market structure filter - Don't trade against strong trends (calculate SMA globally)
+sma20 = ta.sma(close, 20)
+sma20Prev = sma20[1]
+marketStructureOk = (combinedLongSignal and close[1] > sma20Prev) or (combinedShortSignal and close[1] < sma20Prev) or not useSignalStrength
+
+// Final Position Check with All Filters
+finalLongSignal = combinedLongSignal and strategy.position_size <= 0 and longCooldownOk and longReversalOk and signalStrengthLong and marketStructureOk
+finalShortSignal = combinedShortSignal and strategy.position_size >= 0 and shortCooldownOk and shortReversalOk and signalStrengthShort and marketStructureOk
+
+//=====================================================================================================================
+// 💼 POSITION MANAGEMENT
+//=====================================================================================================================
+var float entryPrice = na
+var float stopLossPrice = na
+var float takeProfitPrice = na
+var float trailingStopPrice = na
+var float highestPrice = na
+var float lowestPrice = na
+var bool trailingActive = false
+
+// Long Position Setup
+if finalLongSignal
+    entryPrice := open
+    stopLossPrice := entryPrice * (1 - stopLossPercent / 100)
+    takeProfitPrice := entryPrice * (1 + takeProfitPercent / 100)
+    trailingStopPrice := stopLossPrice
+    highestPrice := entryPrice
+    trailingActive := false
+
+// Short Position Setup  
+if finalShortSignal
+    entryPrice := open
+    stopLossPrice := entryPrice * (1 + stopLossPercent / 100)
+    takeProfitPrice := entryPrice * (1 - takeProfitPercent / 100)
+    trailingStopPrice := stopLossPrice
+    lowestPrice := entryPrice
+    trailingActive := false
+
+// Long Trailing Stop Logic
+if strategy.position_size > 0 and useTrailingStop
+    if high > highestPrice
+        highestPrice := high
+    
+    profitPercent = (highestPrice - entryPrice) / entryPrice * 100
+    if profitPercent >= trailingActivation
+        trailingActive := true
+    
+    if trailingActive
+        newTrailingStop = highestPrice * (1 - trailingDistance / 100)
+        if newTrailingStop > trailingStopPrice
+            trailingStopPrice := newTrailingStop
+
+// Short Trailing Stop Logic
+if strategy.position_size < 0 and useTrailingStop
+    if low < lowestPrice
+        lowestPrice := low
+    
+    profitPercent = (entryPrice - lowestPrice) / entryPrice * 100
+    if profitPercent >= trailingActivation
+        trailingActive := true
+    
+    if trailingActive
+        newTrailingStop = lowestPrice * (1 + trailingDistance / 100)
+        if newTrailingStop < trailingStopPrice
+            trailingStopPrice := newTrailingStop
+
+//=====================================================================================================================
+// 📈 STRATEGY EXECUTION
+//=====================================================================================================================
+// Entry Orders
+if finalLongSignal
+    strategy.entry("EMA_Long", strategy.long, comment="Ribbon+MACD Long")
+
+if finalShortSignal
+    strategy.entry("EMA_Short", strategy.short, comment="Ribbon+MACD Short")
+
+// Exit Orders
+if strategy.position_size > 0
+    if useTrailingStop and trailingActive
+        strategy.exit("Long_Exit", "EMA_Long", stop=trailingStopPrice, limit=takeProfitPrice, comment="Trailing")
+    else
+        strategy.exit("Long_Exit", "EMA_Long", stop=stopLossPrice, limit=takeProfitPrice, comment="Fixed")
+
+if strategy.position_size < 0
+    if useTrailingStop and trailingActive
+        strategy.exit("Short_Exit", "EMA_Short", stop=trailingStopPrice, limit=takeProfitPrice, comment="Trailing")
+    else
+        strategy.exit("Short_Exit", "EMA_Short", stop=stopLossPrice, limit=takeProfitPrice, comment="Fixed")
+
+//=====================================================================================================================
+// 🎨 VISUALIZATION - NON-OVERLAY MULTI-INDICATOR PANE
+//=====================================================================================================================
+// Note: MACD already calculated above, reusing existing variables
+
+// MACD Plots
+macdPlot = plot(macdLine, "MACD Line", color.blue, 3)
+signalPlot = plot(signalLine, "Signal Line", color.red, 2)
+plot(histogramLine, "Histogram", color.gray, style=plot.style_histogram)
+hline(0, "Zero Line", color.black, linestyle=hline.style_solid, linewidth=2)
+
+// MACD Fill
+fill(macdPlot, signalPlot, color=macdLine > signalLine ? color.new(color.green, 80) : color.new(color.red, 80), title="MACD Fill")
+
+// Ribbon Strength Indicators (scaled for MACD pane)
+ribbonStrengthCombined = (fastPivotGap + pivotSlowGap) / 2  // Average gap strength
+ribbonStrengthScaled = ribbonStrengthCombined * 10  // Scale for visibility in MACD pane
+
+// Ribbon Strength Plot
+ribbonStrengthColor = ribbonStrengthOk ? color.lime : color.orange
+plot(ribbonStrengthScaled, "Ribbon Strength", ribbonStrengthColor, 2, plot.style_area)
+
+// Ribbon Direction Indicator
+ribbonDirection = bullishRibbon ? 1 : bearishRibbon ? -1 : 0
+ribbonDirectionScaled = ribbonDirection * 0.5  // Scale for MACD pane
+ribbonDirColor = bullishRibbon ? color.green : bearishRibbon ? color.red : color.gray
+plot(ribbonDirectionScaled, "Ribbon Direction", ribbonDirColor, 3, plot.style_stepline)
+
+// Signal Quality Histogram
+signalQuality = (layer1_ribbonLong or layer1_ribbonShort ? 1 : 0) + (layer2_macdLong or layer2_macdShort ? 1 : 0) + (layer3_volumeOk ? 1 : 0) + (layer4_riskOk ? 1 : 0)
+signalQualityScaled = signalQuality * 0.25  // Scale 0-1 range
+signalQualityColor = signalQuality >= 3 ? color.lime : signalQuality >= 2 ? color.yellow : color.red
+plot(signalQualityScaled, "Signal Quality", signalQualityColor, 1, plot.style_columns)
+
+// Reference lines for ribbon strength
+hline(minRibbonGap * 10, "Min Ribbon Gap", color.orange, linestyle=hline.style_dotted)
+hline(0.5, "Ribbon Strong", color.lime, linestyle=hline.style_dashed)
+
+// Volume Strength (scaled to fit)
+volumeStrength = volumePrev > avgVolumePrev * volumeThreshold ? 0.8 : 0.2
+plot(volumeStrength, "Volume Strength", color.purple, 1, plot.style_stepline)
+
+// Entry/Exit Signals (moved to bottom of pane for better visibility)
+plotshape(rawLongSignal and strategy.position_size <= 0, title="Standard Long", style=shape.triangleup, location=location.bottom, color=color.lime, size=size.large, text="LONG")
+plotshape(rawShortSignal and strategy.position_size >= 0, title="Standard Short", style=shape.triangledown, location=location.bottom, color=color.red, size=size.large, text="SHORT")
+
+// Early Entry Signals (different color/style)
+plotshape(earlyLongSignal and strategy.position_size <= 0, title="Early Long", style=shape.triangleup, location=location.bottom, color=color.yellow, size=size.normal, text="EARLY")
+plotshape(earlyShortSignal and strategy.position_size >= 0, title="Early Short", style=shape.triangledown, location=location.bottom, color=color.orange, size=size.normal, text="EARLY")
+
+// Signal labels removed for cleaner chart visualization
+// Signals are now indicated purely by triangle shapes and colors
+
+// Position Background
+bgcolor(strategy.position_size > 0 ? color.new(color.green, 97) : strategy.position_size < 0 ? color.new(color.red, 97) : na)
+
+// Stop Loss and Take Profit Lines
+longStopPlot = strategy.position_size > 0 ? (useTrailingStop and trailingActive ? trailingStopPrice : stopLossPrice) : na
+longTpPlot = strategy.position_size > 0 ? takeProfitPrice : na
+shortStopPlot = strategy.position_size < 0 ? (useTrailingStop and trailingActive ? trailingStopPrice : stopLossPrice) : na
+shortTpPlot = strategy.position_size < 0 ? takeProfitPrice : na
+
+plot(longStopPlot, "Long Stop", color.red, 2, plot.style_linebr)
+plot(longTpPlot, "Long TP", color.green, 2, plot.style_linebr)
+plot(shortStopPlot, "Short Stop", color.red, 2, plot.style_linebr)
+plot(shortTpPlot, "Short TP", color.green, 2, plot.style_linebr)
+
+//=====================================================================================================================
+// 📊 PERFORMANCE DASHBOARD
+//=====================================================================================================================
+if barstate.islast
+    var table perfTable = table.new(position.bottom_right, 2, 14, bgcolor=color.white, border_width=2)
+    
+    table.cell(perfTable, 0, 0, "🎯 RIBBON MACD", text_color=color.white, bgcolor=color.navy)
+    table.cell(perfTable, 1, 0, "STATUS", text_color=color.white, bgcolor=color.navy)
+    
+    winRate = strategy.wintrades / math.max(strategy.closedtrades, 1) * 100
+    
+    table.cell(perfTable, 0, 1, "Total Trades", text_color=color.black)
+    table.cell(perfTable, 1, 1, str.tostring(strategy.closedtrades), text_color=strategy.closedtrades > 0 ? color.green : color.gray)
+    
+    table.cell(perfTable, 0, 2, "Win Rate", text_color=color.black)
+    table.cell(perfTable, 1, 2, str.tostring(winRate, "#.#") + "%", text_color=winRate > 60 ? color.green : color.red)
+    
+    table.cell(perfTable, 0, 3, "Net Profit", text_color=color.black)
+    table.cell(perfTable, 1, 3, str.tostring(strategy.netprofit, "$#,###"), text_color=strategy.netprofit > 0 ? color.green : color.red)
+    
+    table.cell(perfTable, 0, 4, "EMA Ribbon", text_color=color.black)
+    ribbonStatus = bullishRibbon ? "BULLISH" : bearishRibbon ? "BEARISH" : "MIXED"
+    ribbonColor = bullishRibbon ? color.green : bearishRibbon ? color.red : color.orange
+    table.cell(perfTable, 1, 4, ribbonStatus, text_color=ribbonColor)
+    
+    table.cell(perfTable, 0, 5, "MACD Status", text_color=color.black)
+    macdStatus = macdLine > 0 ? "BULL" : "BEAR"
+    macdColor = macdLine > 0 ? color.green : color.red
+    table.cell(perfTable, 1, 5, macdStatus, text_color=macdColor)
+    
+    table.cell(perfTable, 0, 6, "SMA Context", text_color=color.black)
+    smaStatus = sma50 > sma200 ? "BULLISH" : "BEARISH"
+    smaColor = sma50 > sma200 ? color.green : color.red
+    table.cell(perfTable, 1, 6, smaStatus, text_color=smaColor)
+    
+    table.cell(perfTable, 0, 7, "Daily Trades", text_color=color.black)
+    table.cell(perfTable, 1, 7, str.tostring(dailyTrades) + "/" + str.tostring(maxDailyTrades), text_color=dailyTrades < maxDailyTrades ? color.green : color.red)
+    
+    table.cell(perfTable, 0, 8, "Position", text_color=color.black)
+    posText = strategy.position_size > 0 ? "LONG" : strategy.position_size < 0 ? "SHORT" : "FLAT"
+    posColor = strategy.position_size > 0 ? color.green : strategy.position_size < 0 ? color.red : color.gray
+    table.cell(perfTable, 1, 8, posText, text_color=posColor)
+    
+    table.cell(perfTable, 0, 9, "Ribbon Strength", text_color=color.black)
+    strengthText = ribbonStrengthOk ? "STRONG" : "WEAK"
+    strengthColor = ribbonStrengthOk ? color.green : color.orange
+    table.cell(perfTable, 1, 9, strengthText, text_color=strengthColor)
+    
+    table.cell(perfTable, 0, 10, "Trailing Stop", text_color=color.black)
+    trailText = useTrailingStop and trailingActive ? "ACTIVE" : useTrailingStop ? "WAITING" : "OFF"
+    trailColor = useTrailingStop and trailingActive ? color.orange : useTrailingStop ? color.blue : color.gray
+    table.cell(perfTable, 1, 10, trailText, text_color=trailColor)
+    
+    table.cell(perfTable, 0, 11, "Signal Ready", text_color=color.black)
+    signalText = combinedLongSignal ? (rawLongSignal ? "LONG" : earlyPath1 ? "EARLY-1" : earlyPath2 ? "EARLY-2" : earlyPath3 ? "EARLY-3" : "EARLY-4") : combinedShortSignal ? (rawShortSignal ? "SHORT" : earlyBearishPath1 ? "EARLY-1" : earlyBearishPath2 ? "EARLY-2" : earlyBearishPath3 ? "EARLY-3" : "EARLY-4") : "WAIT"
+    signalColor = combinedLongSignal ? (rawLongSignal ? color.green : color.yellow) : combinedShortSignal ? (rawShortSignal ? color.red : color.orange) : color.gray
+    table.cell(perfTable, 1, 11, signalText, text_color=signalColor)
+    
+    // Signal Filtering Status
+    table.cell(perfTable, 0, 12, "Signal Cooldown", text_color=color.black)
+    cooldownText = useSignalCooldown ? (barsFromLastSignal >= signalCooldownBars ? "READY" : str.tostring(signalCooldownBars - barsFromLastSignal) + " bars") : "OFF"
+    cooldownColor = useSignalCooldown ? (barsFromLastSignal >= signalCooldownBars ? color.green : color.orange) : color.gray
+    table.cell(perfTable, 1, 12, cooldownText, text_color=cooldownColor)
+    
+    table.cell(perfTable, 0, 13, "Filter Status", text_color=color.black)
+    filterText = finalLongSignal ? "LONG OK" : finalShortSignal ? "SHORT OK" : combinedLongSignal ? "LONG BLOCKED" : combinedShortSignal ? "SHORT BLOCKED" : "NONE"
+    filterColor = finalLongSignal ? color.green : finalShortSignal ? color.red : (combinedLongSignal or combinedShortSignal) ? color.orange : color.gray
+    table.cell(perfTable, 1, 13, filterText, text_color=filterColor)
+
+//=====================================================================================================================
+// 🚨 ALERTS
+//=====================================================================================================================
+// Final Filtered Alerts (only fire when signals pass all filters)
+if finalLongSignal
+    signalType = rawLongSignal ? "Standard" : earlyPath1 ? "Early-Conservative" : earlyPath2 ? "Early-Momentum" : earlyPath3 ? "Early-Trend-Continuation" : "Early-Ultra-Breakout"
+    alert("🎯 LONG Signal (" + signalType + ") - All filters passed", alert.freq_once_per_bar)
+
+if finalShortSignal
+    signalType = rawShortSignal ? "Standard" : earlyBearishPath1 ? "Early-Conservative" : earlyBearishPath2 ? "Early-Momentum" : earlyBearishPath3 ? "Early-Trend-Continuation" : "Early-Ultra-Breakdown"
+    alert("🎯 SHORT Signal (" + signalType + ") - All filters passed", alert.freq_once_per_bar)
+
+// Filtered Signal Alert (when raw signals are blocked)
+if (combinedLongSignal and not finalLongSignal) or (combinedShortSignal and not finalShortSignal)
+    blockReason = not longCooldownOk or not shortCooldownOk ? "Cooldown" : not longReversalOk or not shortReversalOk ? "Rapid-Reversal" : not signalStrengthLong or not signalStrengthShort ? "Weak-Signal" : "Market-Structure"
+    alert("⚠️ Signal Blocked - Reason: " + blockReason, alert.freq_once_per_bar)
+
+if trailingActive and not trailingActive[1]
+    alert("📈 Trailing stop activated - profits protected", alert.freq_once_per_bar)
+
+//=====================================================================================================================
+// 🧪 EXPERIMENTAL DEVELOPMENT NOTES
+//=====================================================================================================================
+// Development Status: v1.1 Implementation Complete
+// Target Improvements:
+// 1. Enhanced trend filtering via EMA ribbon system
+// 2. Reduced false signals through multi-layer confirmation  
+// 3. Better institutional context via SMA 50/100/200 analysis
+// 4. Improved signal quality through ribbon strength filtering
+// 5. ✅ NEW: Multi-path early entry system for better opportunity capture
+// 6. ✅ NEW: Signal filtering system to prevent rapid-fire signals and overtrading
+//
+// Recent Updates (v1.1):
+// - Added 4 different early entry paths (Conservative, Momentum, Trend-Continuation, Ultra-Breakout)
+// - Implemented signal cooldown system (default 5 bars minimum between signals)
+// - Added rapid reversal prevention (blocks opposite signals too quickly)
+// - Integrated signal strength filtering for quality control
+// - Enhanced performance dashboard with filtering status
+// - Updated alerts to reflect final filtered signals only
+//
+// Testing Requirements:
+// - Comprehensive test suite validation ≥90%
+// - Paper trading validation (30+ days)
+// - Performance comparison vs pure MACD system
+// - Signal filtering effectiveness validation
+// - Graduation criteria assessment for main repository
+//=====================================================================================================================

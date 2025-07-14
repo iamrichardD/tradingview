@@ -1,0 +1,186 @@
+// EMA Ribbon Overlay Indicator v1.0 - COMPANION TO STRATEGY
+// Restores original ribbon visualization on price chart
+// Use alongside ema-ribbon-macd-hybrid strategy for complete analysis
+//
+// ⚠️ EXPERIMENTAL WARNING: Testing lab only - paper trading required
+//
+// License: MIT License - Educational/Experimental Use Only
+//
+// Contributors:
+// © Saty Mahajan - Original EMA Ribbon methodology (Webull adaptation)
+// © Claude AI - Pine Script v6 conversion and overlay implementation
+// © iamrichardD - Testing lab validation and hybrid visualization design
+//
+//@version=6
+
+indicator("EMA Ribbon Overlay v1", "RIBBON_OV", overlay=true, max_bars_back=200)
+
+//=====================================================================================================================
+// 🚧 COMPANION INDICATOR WARNING
+//=====================================================================================================================
+// This overlay indicator is designed to work WITH the EMA Ribbon MACD Strategy
+// Use both together for complete analysis:
+// 1. Add this indicator for ribbon fills on price chart
+// 2. Add main strategy for MACD analysis and trade execution
+// 
+// DO NOT USE FOR LIVE TRADING - PAPER TRADING ONLY
+
+//=====================================================================================================================
+// 📊 EMA RIBBON CONFIGURATION (MATCHING STRATEGY SETTINGS)
+//=====================================================================================================================
+grpRibbon = "📊 EMA Ribbon System"
+fastEmaLen = input.int(8, "Fast EMA Length", minval=5, maxval=15, group=grpRibbon, tooltip="Primary trend EMA")
+pivotEmaLen = input.int(21, "Pivot EMA Length", minval=15, maxval=30, group=grpRibbon, tooltip="Key support/resistance")
+slowEmaLen = input.int(34, "Slow EMA Length", minval=25, maxval=50, group=grpRibbon, tooltip="Long-term trend filter")
+
+// SMA Context Analysis
+grpSma = "🏗️ SMA Context Levels"
+showSmaLevels = input.bool(true, "Show SMA Context Lines", group=grpSma)
+sma50Len = input.int(50, "SMA 50 Length", minval=30, maxval=70, group=grpSma)
+sma100Len = input.int(100, "SMA 100 Length", minval=80, maxval=120, group=grpSma)
+sma200Len = input.int(200, "SMA 200 Length", minval=150, maxval=250, group=grpSma)
+
+// Visualization Settings
+grpViz = "🎨 Visualization"
+ribbonTransparency = input.int(75, "Ribbon Transparency", minval=50, maxval=95, group=grpViz, tooltip="Higher = more transparent")
+showEmaLines = input.bool(true, "Show EMA Lines", group=grpViz)
+emaLineWidth = input.int(2, "EMA Line Width", minval=1, maxval=4, group=grpViz)
+
+//=====================================================================================================================
+// 📊 EMA RIBBON CALCULATIONS
+//=====================================================================================================================
+// EMA Calculations
+fastEma = ta.ema(close, fastEmaLen)
+pivotEma = ta.ema(close, pivotEmaLen)
+slowEma = ta.ema(close, slowEmaLen)
+
+// SMA Context Levels
+sma50 = ta.sma(close, sma50Len)
+sma100 = ta.sma(close, sma100Len)
+sma200 = ta.sma(close, sma200Len)
+
+// EMA Ribbon Analysis (using previous bar to avoid look-ahead)
+fastEmaPrev = fastEma[1]
+pivotEmaPrev = pivotEma[1]
+slowEmaPrev = slowEma[1]
+
+bullishRibbon = fastEmaPrev > pivotEmaPrev and pivotEmaPrev > slowEmaPrev
+bearishRibbon = fastEmaPrev < pivotEmaPrev and pivotEmaPrev < slowEmaPrev
+ribbonAligned = bullishRibbon or bearishRibbon
+
+//=====================================================================================================================
+// 🎨 RIBBON VISUALIZATION - ORIGINAL STYLE RESTORED
+//=====================================================================================================================
+// EMA Line Plots
+fastEmaPlot = plot(showEmaLines ? fastEma : na, "Fast EMA (8)", color.new(color.lime, 20), emaLineWidth)
+pivotEmaPlot = plot(showEmaLines ? pivotEma : na, "Pivot EMA (21)", color.new(color.orange, 20), emaLineWidth)
+slowEmaPlot = plot(showEmaLines ? slowEma : na, "Slow EMA (34)", color.new(color.red, 20), emaLineWidth)
+
+// Ribbon Fill Areas - ORIGINAL STYLE
+// Fast-Pivot Ribbon Fill
+fastPivotFillColor = fastEma > pivotEma ? color.new(color.lime, ribbonTransparency) : color.new(color.red, ribbonTransparency)
+fill(fastEmaPlot, pivotEmaPlot, color=fastPivotFillColor, title="Fast-Pivot Ribbon")
+
+// Pivot-Slow Ribbon Fill  
+pivotSlowFillColor = pivotEma > slowEma ? color.new(color.green, ribbonTransparency) : color.new(color.maroon, ribbonTransparency)
+fill(pivotEmaPlot, slowEmaPlot, color=pivotSlowFillColor, title="Pivot-Slow Ribbon")
+
+// Full Ribbon Direction Indicator
+fullRibbonColor = bullishRibbon ? color.new(color.lime, ribbonTransparency + 10) : 
+                  bearishRibbon ? color.new(color.red, ribbonTransparency + 10) : 
+                  color.new(color.gray, ribbonTransparency + 20)
+
+// Optional: Full span fill for stronger visual impact  
+showFullSpan = input.bool(false, "Show Full Ribbon Span", group=grpViz, tooltip="Fill entire fast-slow EMA span")
+
+// Full span fill (must be in global scope)
+fill(fastEmaPlot, slowEmaPlot, color=showFullSpan ? fullRibbonColor : na, title="Full Ribbon Span")
+
+//=====================================================================================================================
+// 🏗️ SMA CONTEXT LEVELS
+//=====================================================================================================================
+sma50Plot = plot(showSmaLevels ? sma50 : na, "SMA 50", color.new(color.blue, 30), 2)
+sma100Plot = plot(showSmaLevels ? sma100 : na, "SMA 100", color.new(color.purple, 30), 2)
+sma200Plot = plot(showSmaLevels ? sma200 : na, "SMA 200", color.new(color.black, 20), 3)
+
+// SMA Context Background
+smaContextColor = sma50 > sma200 ? color.new(color.green, 98) : color.new(color.red, 98)
+bgcolor(showSmaLevels ? smaContextColor : na, title="SMA Context Background")
+
+//=====================================================================================================================
+// 🎯 RIBBON STRENGTH INDICATORS
+//=====================================================================================================================
+grpStrength = "💪 Ribbon Strength"
+showStrengthSignals = input.bool(true, "Show Strength Signals", group=grpStrength)
+minRibbonGap = input.float(0.1, "Min Ribbon Gap %", minval=0.05, maxval=0.5, step=0.05, group=grpStrength)
+
+// Ribbon Strength Analysis
+fastPivotGap = math.abs(fastEma - pivotEma) / close * 100
+pivotSlowGap = math.abs(pivotEma - slowEma) / close * 100
+ribbonStrengthOk = fastPivotGap >= minRibbonGap and pivotSlowGap >= minRibbonGap
+
+// Strength signal labels removed for cleaner chart visualization
+// Ribbon strength is now indicated purely by ribbon fills and colors
+
+//=====================================================================================================================
+// 📊 RIBBON STATUS TABLE
+//=====================================================================================================================
+grpTable = "📊 Status Display"
+showStatusTable = input.bool(true, "Show Ribbon Status Table", group=grpTable)
+
+if barstate.islast and showStatusTable
+    var table ribbonTable = table.new(position.bottom_right, 2, 6, bgcolor=color.white, border_width=1)
+    
+    table.cell(ribbonTable, 0, 0, "🎯 EMA RIBBON", text_color=color.white, bgcolor=color.navy)
+    table.cell(ribbonTable, 1, 0, "STATUS", text_color=color.white, bgcolor=color.navy)
+    
+    table.cell(ribbonTable, 0, 1, "Ribbon Direction", text_color=color.black)
+    ribbonStatus = bullishRibbon ? "BULLISH 🟢" : bearishRibbon ? "BEARISH 🔴" : "MIXED ⚪"
+    ribbonColor = bullishRibbon ? color.green : bearishRibbon ? color.red : color.orange
+    table.cell(ribbonTable, 1, 1, ribbonStatus, text_color=ribbonColor)
+    
+    table.cell(ribbonTable, 0, 2, "Ribbon Strength", text_color=color.black)
+    strengthText = ribbonStrengthOk ? "STRONG 💪" : "WEAK ⚠️"
+    strengthColor = ribbonStrengthOk ? color.green : color.orange
+    table.cell(ribbonTable, 1, 2, strengthText, text_color=strengthColor)
+    
+    table.cell(ribbonTable, 0, 3, "Fast EMA", text_color=color.black)
+    table.cell(ribbonTable, 1, 3, str.tostring(fastEma, "#.##"), text_color=color.lime)
+    
+    table.cell(ribbonTable, 0, 4, "Pivot EMA", text_color=color.black)
+    table.cell(ribbonTable, 1, 4, str.tostring(pivotEma, "#.##"), text_color=color.orange)
+    
+    table.cell(ribbonTable, 0, 5, "Slow EMA", text_color=color.black)
+    table.cell(ribbonTable, 1, 5, str.tostring(slowEma, "#.##"), text_color=color.red)
+
+//=====================================================================================================================
+// 🚨 ALERTS FOR RIBBON CHANGES
+//=====================================================================================================================
+if bullishRibbon and not bullishRibbon[1]
+    alert("🟢 EMA Ribbon turned BULLISH - All EMAs aligned upward", alert.freq_once_per_bar)
+
+if bearishRibbon and not bearishRibbon[1]
+    alert("🔴 EMA Ribbon turned BEARISH - All EMAs aligned downward", alert.freq_once_per_bar)
+
+if ribbonStrengthOk and not ribbonStrengthOk[1]
+    alert("💪 EMA Ribbon strength STRONG - Minimum gap requirements met", alert.freq_once_per_bar)
+
+//=====================================================================================================================
+// 📋 USAGE INSTRUCTIONS
+//=====================================================================================================================
+// SETUP INSTRUCTIONS:
+// 1. Add this indicator to your chart (it will overlay on price)
+// 2. Add the main "EMA Ribbon MACD v1" strategy (it will create separate pane below)
+// 3. Configure both with matching EMA settings for consistent analysis
+// 4. Use ribbon fills for trend direction, strategy pane for entry/exit signals
+//
+// VISUALIZATION GUIDE:
+// - GREEN fills = Bullish ribbon alignment
+// - RED fills = Bearish ribbon alignment  
+// - SMA lines = Longer-term context
+// - Strength signals = 💪 when ribbon gaps are sufficient
+//
+// COMPANION STRATEGY:
+// This indicator works best with the main EMA Ribbon MACD strategy
+// which provides MACD analysis and trade execution in separate pane
+//=====================================================================================================================

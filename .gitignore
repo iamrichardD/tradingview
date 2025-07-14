@@ -1,0 +1,40 @@
+# Screenshots and personal data
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+Screenshot*
+screenshot*
+
+# Personal trading data
+*.csv
+personal-data/
+account-data/
+trading-logs/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Backup files
+*.bak
+*.backup
+*~.pine
