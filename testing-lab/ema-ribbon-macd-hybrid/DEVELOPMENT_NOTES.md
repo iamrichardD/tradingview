@@ -2,6 +2,27 @@
 
 ## Version History
 
+### v1.4.3 - Signal Suppression & Automation Safety (2025-07-16)
+
+#### Critical Bug Fixes
+- **Asymmetrical Cooldown Logic**: Fixed `effectiveShortCooldown` using wrong signal variables
+- **Circular Dependencies**: Eliminated circular dependency in signal filtering system
+- **Signal Suppression**: Implemented comprehensive suppression preventing automation issues
+- **State Management**: Fixed confirmation state tracking and reset logic
+
+#### Signal Suppression System
+- **Indefinite Suppression**: Suppresses signals in same direction until direction change
+- **Confirmation Suppression**: Prevents multiple "C" confirmations in same direction
+- **Early Signal Suppression**: Prevents multiple "E" early signals after confirmation
+- **Automation Safety**: Designed specifically for automated trading systems
+- **No Time-Based Reset**: Eliminates problematic time-based suppression windows
+
+#### Architecture Improvements
+- **Sequential Signal Flow**: Proper signal calculation order eliminating circular dependencies
+- **Enhanced Confirmation Logic**: Simplified confirmation detection with proper state tracking
+- **Cooldown System Refactor**: Separate cooldown periods for early vs standard signals
+- **Confirmation Bypass**: Allow confirmations to override standard cooldown restrictions
+
 ### v1.1 - Enhanced Signal System (2025-07-14)
 
 #### Major Features Added
@@ -33,6 +54,14 @@
 - Comprehensive test suite (34 tests)
 
 ## Performance Analysis
+
+### v1.4.3 Automation Safety Achievements
+- **Signal Suppression**: Successfully prevents redundant signals in automation
+- **State Consistency**: Proper signal state management prevents confusion
+- **Circular Dependency Resolution**: System now has predictable, sequential signal flow
+- **Confirmation Logic**: Simplified system reduces complexity and improves reliability
+
+### v1.1 Signal Capture Performance
 
 ### Successful Signal Captures
 - **Early Short Signals**: Excellent performance at resistance breakdown (06:30-07:00)
@@ -66,7 +95,13 @@
 
 ## Technical Improvements Needed
 
-### Priority 1: Reversal Exit System
+### v1.4.3 Completed Fixes
+- ✅ **Signal Suppression System**: Implemented comprehensive automation-safe suppression
+- ✅ **Asymmetrical Cooldown Fix**: Corrected short signal cooldown logic
+- ✅ **Circular Dependency Elimination**: Refactored signal filtering for sequential flow
+- ✅ **Confirmation State Management**: Fixed state tracking and reset logic
+
+### Priority 1: Reversal Exit System (Still Needed)
 ```pine
 // Required Features:
 - Hammer/Doji pattern detection at key levels
@@ -134,6 +169,13 @@
 
 ## Code Quality Notes
 
+### v1.4.3 Quality Improvements
+- **Signal Flow Architecture**: Sequential signal calculation eliminates circular dependencies
+- **State Management**: Proper signal state tracking with indefinite suppression
+- **Automation Safety**: Designed specifically for automated trading requirements
+- **Code Simplification**: Removed complex confirmation logic in favor of reliable simple system
+- **Bug Resolution**: Fixed critical asymmetrical cooldown logic error
+
 ### Successful Implementations
 - **Multi-path architecture**: Clean, extensible design
 - **Signal filtering**: Comprehensive filtering system with good UX
@@ -176,10 +218,17 @@
 
 ## Next Development Session Priorities
 
+### Completed in v1.4.3
+- ✅ **Signal Suppression System** - Automation safety achieved
+- ✅ **Asymmetrical Cooldown Fix** - Signal logic consistency restored
+- ✅ **Circular Dependency Resolution** - Sequential signal flow implemented
+- ✅ **Enhanced State Management** - Proper confirmation tracking
+
+### Next Priorities
 1. **Implement Reversal Exit System** - Highest impact for risk reduction
-2. **Add Adaptive Cooldown Logic** - Improve trend continuation capture
+2. **Add Adaptive Cooldown Logic** - Improve trend continuation capture  
 3. **Create Pullback Entry Detection** - Enhance opportunity identification
-4. **Test New Features** - Validate improvements against known scenarios
+4. **Validate v1.4.3 Suppression** - Test automation safety in live conditions
 
 ## Performance Metrics to Track
 

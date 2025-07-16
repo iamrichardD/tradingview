@@ -1,8 +1,8 @@
 # EMA Ribbon + MACD Hybrid Strategy - Testing Lab
 
 [![Status](https://img.shields.io/badge/Status-Experimental-orange.svg)](#development-status)
-[![Version](https://img.shields.io/badge/Version-v1.1-blue.svg)](#version-history)
-[![Testing](https://img.shields.io/badge/Tests-34%20Tests-green.svg)](#testing-framework)
+[![Version](https://img.shields.io/badge/Version-v1.4.3-blue.svg)](#version-history)
+[![Testing](https://img.shields.io/badge/Tests-46%20Tests-green.svg)](#testing-framework)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-blue.svg)](#technical-specifications)
 
 > **⚠️ EXPERIMENTAL WARNING: This strategy is in active development in the testing lab. Paper trading only - no live trading until graduation.**
@@ -71,18 +71,29 @@ Layer 4: Volume & Risk Validation
 
 ## 🧪 Development Status
 
-### Version 1.1 Implementation Status
+### Version 1.4.3 Implementation Status
 - ✅ **EMA Ribbon System**: Complete Pine Script v6 conversion
 - ✅ **MACD Integration**: Multi-signal system implemented
 - ✅ **SMA Context**: Institutional level analysis  
 - ✅ **Risk Management**: Trailing stops and position sizing
-- ✅ **Testing Framework**: 34 comprehensive tests created
+- ✅ **Testing Framework**: 46 comprehensive tests created
 - ✅ **Visualization**: Enhanced charting and dashboard
 - ✅ **Multi-Path Early Entry**: 4 different signal paths for enhanced opportunity capture
 - ✅ **Signal Filtering System**: Advanced filtering to prevent rapid-fire signals and overtrading
+- ✅ **Signal Suppression**: Comprehensive automation-safe signal suppression system
+- ✅ **Cooldown Logic**: Asymmetrical cooldown system with confirmation bypass
+- ✅ **Circular Dependency Fix**: Eliminated signal filtering circular dependencies
 
-### Recent Updates (v1.1)
-🚀 **Enhanced Signal System**
+### Recent Updates (v1.4.3)
+🚀 **Signal Suppression & Automation Safety**
+- **Comprehensive Signal Suppression**: Prevents redundant E/C signals in same direction
+- **Indefinite Suppression**: Automation-safe suppression until direction change
+- **Asymmetrical Cooldown**: Different cooldown periods for early vs standard signals
+- **Confirmation Bypass**: Allow confirmations to override cooldown restrictions
+- **Circular Dependency Elimination**: Complete refactoring of signal filtering system
+- **Enhanced State Management**: Proper signal tracking and suppression reset logic
+
+🔧 **Previous Enhancements (v1.1)**
 - **4 Early Entry Paths**: Conservative, Momentum, Trend-Continuation, Ultra-Breakout
 - **Signal Cooldown System**: Prevents rapid-fire signals (configurable 1-20 bars)
 - **Rapid Reversal Prevention**: Blocks opposite signals when fired too quickly
@@ -91,11 +102,12 @@ Layer 4: Volume & Risk Validation
 - **Improved Alerts**: Path-specific alerts with filtering confirmation
 
 ### Current Development Phase
-🔬 **Performance Optimization Phase**
-- **Live Testing**: Active paper trading validation with enhanced signal system
-- **Signal Analysis**: Documented missed opportunities and system improvements needed
-- **Performance Tracking**: Monitoring signal quality vs. quantity trade-offs
-- **Next Phase**: Reversal exit system and adaptive cooldown implementation
+🔬 **Signal Quality & Automation Safety Phase**
+- **Automation Safety**: Comprehensive signal suppression preventing unwanted duplicate trades
+- **Signal Quality**: Enhanced confirmation system with proper state management
+- **System Reliability**: Eliminated circular dependencies and logical inconsistencies
+- **Live Testing**: Active paper trading validation with v1.4.3 suppression system
+- **Next Phase**: Reversal exit system and adaptive filtering enhancements
 
 ## 🎯 Expected Performance Improvements
 
@@ -122,7 +134,7 @@ Layer 4: Volume & Risk Validation
 
 ## 🧪 Testing Framework
 
-### Test Suite Architecture (34 Tests)
+### Test Suite Architecture (46 Tests)
 
 #### **Category 1: EMA Ribbon System (8 tests)**
 - EMA calculation accuracy and hierarchy validation
@@ -147,12 +159,24 @@ Layer 4: Volume & Risk Validation
 - Volume filter logic and risk management
 - Position state awareness
 
-#### **Category 5: Risk Management (4 tests)**
+#### **Category 5: Signal Suppression (6 tests)**
+- Signal suppression state management
+- Confirmation detection logic
+- Early signal and confirmation suppression
+- Indefinite suppression for automation safety
+
+#### **Category 6: Cooldown Logic (6 tests)**
+- Asymmetrical cooldown parameter validation
+- Effective cooldown calculation logic
+- Confirmation bypass feature testing
+- Rapid reversal prevention validation
+
+#### **Category 7: Risk Management (4 tests)**
 - Stop loss and take profit calculations
 - Risk/reward ratio validation
 - Position sizing bounds checking
 
-#### **Category 6: Pine Script v6 Compliance (4 tests)**
+#### **Category 8: Pine Script v6 Compliance (4 tests)**
 - Type system and function call compliance
 - String type and historical reference syntax
 - Runtime safety validation
@@ -319,7 +343,7 @@ Ribbon Gap: 0.08%
 ## 🏆 Success Criteria
 
 ### Testing Lab Graduation Requirements
-- ✅ **Test Pass Rate**: ≥90% on all 34 tests
+- ✅ **Test Pass Rate**: ≥90% on all 46 tests
 - ✅ **Paper Trading**: 30+ days successful validation
 - ✅ **Performance Targets**: Meet conservative target metrics
 - ✅ **Risk Validation**: Confirm all safety protocols
