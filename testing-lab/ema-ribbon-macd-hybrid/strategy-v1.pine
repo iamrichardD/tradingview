@@ -1,4 +1,4 @@
-// EMA Ribbon + MACD Hybrid Strategy v1.4.3 - EXPERIMENTAL
+// EMA Ribbon + MACD Hybrid Strategy v1.5 - EXPERIMENTAL
 // Multi-layer signal system combining EMA ribbon trend analysis with MACD momentum
 // Transformation target: Enhanced trend filtering + reduced false signals
 //
@@ -333,8 +333,7 @@ var int lastEarlySignalBar = -1  // Track when last early signal occurred
 // Current bar RAW signal detection (ignores position filters and cooldowns)
 currentBarRawEarlyLong = earlyLongSignal
 currentBarRawEarlyShort = earlyShortSignal
-currentBarRawStandardLong = rawLongSignal
-currentBarRawStandardShort = rawShortSignal
+
 
 //=====================================================================================================================
 // ✅ SIMPLIFIED CONFIRMATION & SUPPRESSION SYSTEM
@@ -421,14 +420,14 @@ plot(debugConfirmedLong * -4, "Debug CONFIRMED Long!", color.lime, 3, plot.style
 plot(debugConfirmedShort * -4, "Debug CONFIRMED Short!", color.red, 3, plot.style_cross)
 
 // Final signal determination with simplified early signal suppression
-finalStandardLong = rawLongSignal or upgradedStandardLong
-finalStandardShort = rawShortSignal or upgradedStandardShort
+finalStandardLong = upgradedStandardLong
+finalStandardShort = upgradedStandardShort
 finalEarlyLong = earlyLongSignal and not upgradedStandardLong and not suppressEarlyLong
 finalEarlyShort = earlyShortSignal and not upgradedStandardShort and not suppressEarlyShort
 
 // Combined Signal System (Standard + Early Entry + Confirmed)
-combinedLongSignal = finalStandardLong or finalEarlyLong
-combinedShortSignal = finalStandardShort or finalEarlyShort
+combinedLongSignal = finalStandardLong
+combinedShortSignal = finalStandardShort
 
 //=====================================================================================================================
 // 🔄 SIGNAL FILTERING SYSTEM
