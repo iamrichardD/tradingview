@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__claude-gemini-pair-programmer__pair_programming_cycle",
+      "mcp__claude-gemini-pair-programmer__claude_implement",
+      "mcp__claude-gemini-pair-programmer__get_session_context",
+      "mcp__claude-gemini-pair-programmer__gemini_analyze_code",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "claude-gemini-pair-programmer"
+  ],
+  "commitTemplate": {
+    "attribution": "🤖 Generated collaboratively with [Claude CLI](https://github.com/anthropics/claude-code) and [Gemini CLI](https://github.com/google-gemini/gemini-cli)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nCo-Authored-By: Gemini <gemini@google.com>",
+    "description": "Standard attribution format for AI collaborative development in this TradingView Pine Script project"
+  }
+}
