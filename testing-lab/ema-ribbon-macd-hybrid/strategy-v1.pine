@@ -169,11 +169,10 @@ closePrev = close[1]
 
 bullishRibbon = fastEmaPrev > pivotEmaPrev and pivotEmaPrev > slowEmaPrev
 bearishRibbon = fastEmaPrev < pivotEmaPrev and pivotEmaPrev < slowEmaPrev
-ribbonAligned = bullishRibbon or bearishRibbon
 
-// Ribbon Strength Analysis (using previous bar)
-fastPivotGap = math.abs(fastEmaPrev - pivotEmaPrev) / closePrev * 100
-pivotSlowGap = math.abs(pivotEmaPrev - slowEmaPrev) / closePrev * 100
+// Ribbon Strength Analysis (using previous bar) - with error handling
+fastPivotGap = closePrev > 0 ? math.abs(fastEmaPrev - pivotEmaPrev) / closePrev * 100 : 0
+pivotSlowGap = closePrev > 0 ? math.abs(pivotEmaPrev - slowEmaPrev) / closePrev * 100 : 0
 ribbonStrengthOk = not useRibbonStrength or (fastPivotGap >= minRibbonGap and pivotSlowGap >= minRibbonGap)
 
 // SMA Context Analysis (using previous bar)
@@ -222,9 +221,14 @@ layer3_volumeOk = not useVolumeFilter or volumePrev > avgVolumePrev * volumeThre
 
 // Layer 4: Risk Management
 var int dailyTrades = 0
-newDay = ta.change(dayofweek) != 0
+var int currentDay = 0
+
+// Improved session detection using timestamp
+dayTimestamp = math.floor(timenow / 86400000)  // Convert to days since epoch
+newDay = currentDay != dayTimestamp
 if newDay
     dailyTrades := 0
+    currentDay := dayTimestamp
 
 if strategy.closedtrades > strategy.closedtrades[1]
     dailyTrades := dailyTrades + 1
@@ -238,82 +242,80 @@ rawShortSignal = layer1_ribbonShort and layer2_macdShort and layer3_volumeOk and
 //=====================================================================================================================
 // ⚡ EARLY ENTRY SYSTEM - ENHANCED MULTI-PATH
 //=====================================================================================================================
-// Dynamic MACD threshold based on user preference
+// Pre-calculate common variables to avoid redundant calculations
 macdThreshold = useAggressiveMacd ? -0.05 : -0.15
-oversoldMacdTurning = (macdPrev < macdThreshold) and (macdPrev > macdPrev2)  // MACD turning up from oversold
+open1 = open[1]
+close2 = close[2]
+high1 = high[1]
+high2 = high[2]
+low1 = low[1]
+low2 = low[2]
+fastEma2 = fastEma[2]
+macdTurningPositive = macdPrev > macdPrev2
+macdTurningNegative = macdPrev < macdPrev2
+macdBelowZero = macdPrev < 0
+macdAboveZero = macdPrev > 0
+oversoldMacdTurning = (macdPrev < macdThreshold) and macdTurningPositive
+overboughtMacdTurning = (macdPrev > -macdThreshold) and macdTurningNegative
 
-// PATH 1: Original Early Entry Conditions (Conservative)
-earlyBullishSetup = (closePrev > pivotEmaPrev) and (pivotEmaPrev > slowEmaPrev)  // Partial EMA alignment
+// Pre-calculate common reversal patterns
+strictBullishReversal = (low1 < low2) and (closePrev > open1) and (closePrev > close2)
+simpleBullishReversal = (closePrev > open1) and (closePrev > close2)
+ultraBullishReversal = closePrev > close2
+momentumBullishReversal = (closePrev > open1) or (high1 > high2)
+strictBearishReversal = (high1 > high2) and (closePrev < open1) and (closePrev < close2)
+simpleBearishReversal = (closePrev < open1) and (closePrev < close2)
+ultraBearishReversal = closePrev < close2
+momentumBearishReversal = (closePrev < open1) or (low1 < low2)
 
-// Enhanced Reversal Pattern Options
-strictBullishReversal = (low[1] < low[2]) and (closePrev > open[1]) and (closePrev > close[2])  // Original strict pattern
-simpleBullishReversal = (closePrev > open[1]) and (closePrev > close[2])  // Simpler green candle after decline
-ultraBullishReversal = closePrev > close[2]  // Just require close above 2 bars ago
-momentumBullishReversal = (closePrev > open[1]) or (high[1] > high[2])  // Either bullish candle OR higher high
-
-// Select reversal pattern based on settings
+// Select reversal patterns based on settings (reuse calculations)
 strongBullishReversal = useUltraEarly ? (momentumBullishReversal or ultraBullishReversal) : (useSimpleReversal ? simpleBullishReversal : strictBullishReversal)
+strongBearishReversal = useUltraEarly ? (momentumBearishReversal or ultraBearishReversal) : (useSimpleReversal ? simpleBearishReversal : strictBearishReversal)
 
-// PATH 2: Momentum-Based Entry (More Aggressive)
-priceAboveFast = closePrev > fastEmaPrev  // Just above fast EMA
-fastEmaTrendingUp = fastEmaPrev > fastEma[2]  // Fast EMA trending upward
-momentumSetup = priceAboveFast and fastEmaTrendingUp
-macdTurningPositive = macdPrev > macdPrev2  // Any upward momentum
+// Pre-calculate common setup conditions
+priceAboveFast = closePrev > fastEmaPrev
+priceBelowFast = closePrev < fastEmaPrev
+fastEmaTrendingUp = fastEmaPrev > fastEma2
+fastEmaTrendingDown = fastEmaPrev < fastEma2
+priceAbovePivot = closePrev > pivotEmaPrev
+priceBelowPivot = closePrev < pivotEmaPrev
+pivotAboveSlow = pivotEmaPrev > slowEmaPrev
+pivotBelowSlow = pivotEmaPrev < slowEmaPrev
+recentHighMax = math.max(high1, high2)
+recentLowMin = math.min(low1, low2)
 
-// PATH 3: Trend Continuation Entry (Alternative)
-trendContinuationSetup = closePrev > pivotEmaPrev  // Price above pivot only
-macdBelowZero = macdPrev < 0  // MACD still negative (oversold area)
-continuationReversal = useUltraEarly ? ultraBullishReversal : momentumBullishReversal
-
-// PATH 4: Pure Momentum Entry (Ultra-Aggressive)
-pureBreakout = closePrev > math.max(high[1], high[2])  // Breaking above recent highs
-volumeBurst = useVolumeFilterEarly ? volumePrev > avgVolumePrev * 1.5 : true  // Volume confirmation if enabled
-
-// Early Signal Generation Logic
+// Early volume confirmation
 earlyVolumeOk = useVolumeFilterEarly ? layer3_volumeOk : true
+volumeBurst = useVolumeFilterEarly ? volumePrev > avgVolumePrev * 1.5 : true
+
+// BULLISH PATHS
+earlyBullishSetup = priceAbovePivot and pivotAboveSlow
+momentumSetup = priceAboveFast and fastEmaTrendingUp
+trendContinuationSetup = priceAbovePivot
+continuationReversal = useUltraEarly ? ultraBullishReversal : momentumBullishReversal
+pureBreakout = closePrev > recentHighMax
 
 // Multiple early entry paths
-earlyPath1 = earlyBullishSetup and strongBullishReversal and oversoldMacdTurning  // Original path
-earlyPath2 = useMultiplePaths and momentumSetup and ultraBullishReversal and macdTurningPositive  // Momentum path
-earlyPath3 = useMultiplePaths and trendContinuationSetup and continuationReversal and macdBelowZero  // Trend continuation
-earlyPath4 = useUltraEarly and pureBreakout and volumeBurst and macdTurningPositive  // Pure momentum breakout
+earlyPath1 = earlyBullishSetup and strongBullishReversal and oversoldMacdTurning
+earlyPath2 = useMultiplePaths and momentumSetup and ultraBullishReversal and macdTurningPositive
+earlyPath3 = useMultiplePaths and trendContinuationSetup and continuationReversal and macdBelowZero
+earlyPath4 = useUltraEarly and pureBreakout and volumeBurst and macdTurningPositive
 
 // Combined early long signal
 earlyLongSignal = useEarlyEntry and (earlyPath1 or earlyPath2 or earlyPath3 or earlyPath4) and earlyVolumeOk and layer4_riskOk
 
-// BEARISH PATHS (Mirror logic for shorts)
-// PATH 1: Original Early Bearish Setup
-earlyBearishSetup = (closePrev < pivotEmaPrev) and (pivotEmaPrev < slowEmaPrev)  // Partial EMA alignment
-overboughtMacdTurning = (macdPrev > -macdThreshold) and (macdPrev < macdPrev2)  // MACD turning down from overbought
-
-// Enhanced Bearish Reversal Patterns
-strictBearishReversal = (high[1] > high[2]) and (closePrev < open[1]) and (closePrev < close[2])  // Original strict pattern
-simpleBearishReversal = (closePrev < open[1]) and (closePrev < close[2])  // Simpler red candle after rally
-ultraBearishReversal = closePrev < close[2]  // Just require close below 2 bars ago
-momentumBearishReversal = (closePrev < open[1]) or (low[1] < low[2])  // Either bearish candle OR lower low
-
-// Select bearish reversal pattern
-strongBearishReversal = useUltraEarly ? (momentumBearishReversal or ultraBearishReversal) : (useSimpleReversal ? simpleBearishReversal : strictBearishReversal)
-
-// PATH 2: Bearish Momentum Setup
-priceBelowFast = closePrev < fastEmaPrev  // Below fast EMA
-fastEmaTrendingDown = fastEmaPrev < fastEma[2]  // Fast EMA trending downward
+// BEARISH PATHS
+earlyBearishSetup = priceBelowPivot and pivotBelowSlow
 bearishMomentumSetup = priceBelowFast and fastEmaTrendingDown
-macdTurningNegative = macdPrev < macdPrev2  // Any downward momentum
-
-// PATH 3: Bearish Trend Continuation
-bearishContinuationSetup = closePrev < pivotEmaPrev  // Price below pivot only
-macdAboveZero = macdPrev > 0  // MACD still positive (overbought area)
+bearishContinuationSetup = priceBelowPivot
 bearishContinuationReversal = useUltraEarly ? ultraBearishReversal : momentumBearishReversal
-
-// PATH 4: Pure Bearish Momentum
-pureBreakdown = closePrev < math.min(low[1], low[2])  // Breaking below recent lows
+pureBreakdown = closePrev < recentLowMin
 
 // Bearish early entry paths
-earlyBearishPath1 = earlyBearishSetup and strongBearishReversal and overboughtMacdTurning  // Original path
-earlyBearishPath2 = useMultiplePaths and bearishMomentumSetup and ultraBearishReversal and macdTurningNegative  // Momentum path
-earlyBearishPath3 = useMultiplePaths and bearishContinuationSetup and bearishContinuationReversal and macdAboveZero  // Trend continuation
-earlyBearishPath4 = useUltraEarly and pureBreakdown and volumeBurst and macdTurningNegative  // Pure momentum breakdown
+earlyBearishPath1 = earlyBearishSetup and strongBearishReversal and overboughtMacdTurning
+earlyBearishPath2 = useMultiplePaths and bearishMomentumSetup and ultraBearishReversal and macdTurningNegative
+earlyBearishPath3 = useMultiplePaths and bearishContinuationSetup and bearishContinuationReversal and macdAboveZero
+earlyBearishPath4 = useUltraEarly and pureBreakdown and volumeBurst and macdTurningNegative
 
 // Combined early short signal
 earlyShortSignal = useEarlyEntry and (earlyBearishPath1 or earlyBearishPath2 or earlyBearishPath3 or earlyBearishPath4) and earlyVolumeOk and layer4_riskOk
@@ -324,8 +326,6 @@ earlyShortSignal = useEarlyEntry and (earlyBearishPath1 or earlyBearishPath2 or 
 // Signal Evolution Tracking - Track RAW early signals for confirmation detection
 var int lastRawSignalType = 0  // 0=none, 1=early_long, -1=early_short, 2=standard_long, -2=standard_short
 var int lastRawSignalBar = -1
-var bool confirmationAlreadyShown = false  // Track if confirmation signal already displayed
-var int lastConfirmationBar = -1  // Track when last confirmation was shown
 // SIMPLIFIED EARLY SIGNAL SUPPRESSION - Replace complex confirmation system
 var int lastEarlySignalDirection = 0  // Track last early signal direction (1=long, -1=short, 0=none)
 var int lastEarlySignalBar = -1  // Track when last early signal occurred
@@ -382,52 +382,18 @@ if (lastEarlySignalDirection == 1 and currentBarRawEarlyShort) or (lastEarlySign
 upgradedStandardLong = confirmedLongSignal and upgradeConfirmedSignals
 upgradedStandardShort = confirmedShortSignal and upgradeConfirmedSignals
 
-// DEBUG: Add confirmation debug plot - positioned below signal triangles
-debugConfirmationLong = currentBarRawEarlyLong ? 1 : 0
-debugLastSignalType = lastRawSignalType
-debugBarsFromLast = barsFromLastRawSignal
-debugWithinWindow = isWithinConfirmationWindow ? 1 : 0
-debugConfirmedSignal = confirmedLongSignal ? 1 : 0
-debugConfirmationState = confirmationAlreadyShown ? 1 : 0
-// NOTE: Simplified confirmation system - removed complex canShowConfirmation logic
-plot(debugConfirmationLong * -3, "Debug Current Early", color.blue, 2, plot.style_circles)
-plot(debugLastSignalType * -0.5, "Debug Last Signal Type", color.purple, 2, plot.style_stepline)
-plot(debugBarsFromLast / -10, "Debug Bars From Last (÷-10)", color.gray, 1, plot.style_line)
-plot(debugWithinWindow * -2, "Debug Within Window", color.orange, 2, plot.style_stepline)
-plot(debugConfirmedSignal * -4, "Debug CONFIRMED!", color.lime, 3, plot.style_cross)
-plot(debugConfirmationState * -1, "Debug Confirmation State", color.fuchsia, 2, plot.style_stepline)
-// NOTE: Suppression debug plots now handled in simplified system below
-
 // Simplified signal classification - no complex upgrading
 // upgradedStandardLong and upgradedStandardShort already set above
 
-// DEBUG: Check if upgradedStandardLong is evaluating correctly
-plot(upgradedStandardLong ? -5 : na, "Debug Upgraded Standard Long", color.yellow, 4, plot.style_cross)
-plot(upgradeConfirmedSignals ? -6 : na, "Debug Upgrade Setting", color.fuchsia, 2, plot.style_circles)
+// Base signal determination (before filtering) - Only use confirmed signals for entries
+baseStandardLong = upgradedStandardLong  
+baseStandardShort = upgradedStandardShort
+baseEarlyLong = earlyLongSignal and not upgradedStandardLong and not suppressEarlyLong
+baseEarlyShort = earlyShortSignal and not upgradedStandardShort and not suppressEarlyShort
 
-// NOTE: Early signal suppression logic now handled above in simplified system
-
-// Debug plots for indefinite suppression system
-debugSuppressEarlyLong = suppressEarlyLong ? 1 : 0
-debugSuppressEarlyShort = suppressEarlyShort ? -1 : 0
-debugLastEarlyDirection = lastEarlySignalDirection
-debugConfirmedLong = confirmedLongSignal ? 1 : 0
-debugConfirmedShort = confirmedShortSignal ? -1 : 0
-plot(debugSuppressEarlyLong * -7, "Debug Suppress Early Long", color.red, 2, plot.style_stepline)
-plot(debugSuppressEarlyShort * -7, "Debug Suppress Early Short", color.maroon, 2, plot.style_stepline)
-plot(debugLastEarlyDirection * -8, "Debug Last Early Direction", color.orange, 2, plot.style_stepline)
-plot(debugConfirmedLong * -4, "Debug CONFIRMED Long!", color.lime, 3, plot.style_cross)
-plot(debugConfirmedShort * -4, "Debug CONFIRMED Short!", color.red, 3, plot.style_cross)
-
-// Final signal determination with simplified early signal suppression
-finalStandardLong = upgradedStandardLong
-finalStandardShort = upgradedStandardShort
-finalEarlyLong = earlyLongSignal and not upgradedStandardLong and not suppressEarlyLong
-finalEarlyShort = earlyShortSignal and not upgradedStandardShort and not suppressEarlyShort
-
-// Combined Signal System (Standard + Early Entry + Confirmed)
-combinedLongSignal = finalStandardLong
-combinedShortSignal = finalStandardShort
+// Combined Signal System (Standard + Early Entry + Confirmed) - BEFORE filtering
+combinedLongSignal = baseStandardLong or baseEarlyLong
+combinedShortSignal = baseStandardShort or baseEarlyShort
 
 //=====================================================================================================================
 // 🔄 SIGNAL FILTERING SYSTEM
@@ -450,8 +416,8 @@ barsFromLastSignal = bar_index - lastSignalBar
 // This avoids circular dependency since we're not using finalEarlyLong/finalEarlyShort
 combinedEarlyLong = earlyLongSignal and not upgradedStandardLong
 combinedEarlyShort = earlyShortSignal and not upgradedStandardShort
-combinedStandardLong = rawLongSignal or upgradedStandardLong
-combinedStandardShort = rawShortSignal or upgradedStandardShort
+combinedStandardLong = upgradedStandardLong
+combinedStandardShort = upgradedStandardShort
 
 // STEP 3: Calculate effective cooldown periods
 isEarlyLongSignal = combinedEarlyLong and combinedLongSignal
@@ -489,21 +455,19 @@ finalShortSignal = combinedShortSignal and strategy.position_size >= 0 and short
 // 🚪 SMART EXIT SYSTEM - Reversal Detection & EMA Break Exits
 //=====================================================================================================================
 
-// Pre-calculate volume confirmation for reversal patterns
-avgVolume20 = ta.sma(volume, 20)
-avgVolume20Prev = avgVolume20[1]
-volumeConfirmed = not volumeConfirmation or volumePrev > avgVolume20Prev * 1.2
+// Pre-calculate volume confirmation for reversal patterns - reuse existing volume calculations
+volumeConfirmed = not volumeConfirmation or volumePrev > avgVolumePrev * 1.2
 
 // Pre-calculate ATR for pattern validation (Pine Script v6 requirement)
 atr14 = ta.atr(14)
 atr14Prev = atr14[1]
 
 // Enhanced Reversal Pattern Detection (using configurable thresholds)
-// Calculate candle components for pattern analysis
-candleRange = high[1] - low[1]
-candleBody = math.abs(close[1] - open[1])
-lowerShadow = math.min(open[1], close[1]) - low[1]
-upperShadow = high[1] - math.max(open[1], close[1])
+// Calculate candle components for pattern analysis (reuse pre-calculated variables)
+candleRange = high1 - low1
+candleBody = math.abs(closePrev - open1)
+lowerShadow = math.min(open1, closePrev) - low1
+upperShadow = high1 - math.max(open1, closePrev)
 
 // Improved Hammer Pattern: Configurable thresholds for real-world patterns
 hammerLowerShadow = lowerShadow >= candleRange * hammerShadowRatio
@@ -519,34 +483,41 @@ shootingStarLowerShadow = lowerShadow <= candleRange * upperShadowRatio
 shootingStarMinSize = candleRange > atr14Prev * 0.3
 shootingStarPattern = shootingStarUpperShadow and shootingStarBodySize and shootingStarLowerShadow and shootingStarMinSize
 
-// Enhanced Doji Pattern: More flexible body size
-dojiBodyRatio = candleBody / candleRange
+// Enhanced Doji Pattern: More flexible body size - with error handling
+dojiBodyRatio = candleRange > 0 ? candleBody / candleRange : 0
 dojiPattern = dojiBodyRatio <= 0.15 and candleRange > atr14Prev * 0.25  // Relaxed criteria
 
-// Improved Engulfing Patterns: More reliable detection
-bullishEngulfingBody = close[1] > open[1] and close[2] < open[2]  // Current green, previous red
-bullishEngulfingSize = close[1] > open[2] and open[1] < close[2]  // Bodies overlap significantly
-bullishEngulfingVolume = not volumeConfirmation or volumePrev > avgVolume20Prev
+// Improved Engulfing Patterns: More reliable detection (reuse pre-calculated variables)
+open2 = open[2]
+bullishEngulfingBody = closePrev > open1 and close2 < open2  // Current green, previous red
+bullishEngulfingSize = closePrev > open2 and open1 < close2  // Bodies overlap significantly
+bullishEngulfingVolume = not volumeConfirmation or volumePrev > avgVolumePrev
 bullishEngulfing = bullishEngulfingBody and bullishEngulfingSize and bullishEngulfingVolume
 
-bearishEngulfingBody = close[1] < open[1] and close[2] > open[2]  // Current red, previous green
-bearishEngulfingSize = close[1] < open[2] and open[1] > close[2]  // Bodies overlap significantly
-bearishEngulfingVolume = not volumeConfirmation or volumePrev > avgVolume20Prev
+bearishEngulfingBody = closePrev < open1 and close2 > open2  // Current red, previous green
+bearishEngulfingSize = closePrev < open2 and open1 > close2  // Bodies overlap significantly
+bearishEngulfingVolume = not volumeConfirmation or volumePrev > avgVolumePrev
 bearishEngulfing = bearishEngulfingBody and bearishEngulfingSize and bearishEngulfingVolume
 
 // Strong Reversal Patterns: Large body reversals (like 9:15 scenario)
+// Pre-calculate common thresholds to avoid redundant calculations
+candleRange60 = candleRange * 0.6
+candleRange20 = candleRange * 0.2
+candleRange15 = candleRange * 0.15
+atrThreshold = atr14Prev * 0.4
+
 // Strong Bullish Reversal: Large green body with lower shadow at support
-strongBullishBody = close[1] > open[1] and candleBody >= candleRange * 0.6  // Large green body (≥60%)
-strongBullishShadow = lowerShadow >= candleRange * 0.2  // Some lower shadow (≥20%)
-strongBullishUpper = upperShadow <= candleRange * 0.15  // Minimal upper shadow (≤15%)
-strongBullishSize = candleRange > atr14Prev * 0.4  // Significant candle size
+strongBullishBody = closePrev > open1 and candleBody >= candleRange60  // Large green body (≥60%)
+strongBullishShadow = lowerShadow >= candleRange20  // Some lower shadow (≥20%)
+strongBullishUpper = upperShadow <= candleRange15  // Minimal upper shadow (≤15%)
+strongBullishSize = candleRange > atrThreshold  // Significant candle size
 strongBullPattern = strongBullishBody and strongBullishShadow and strongBullishUpper and strongBullishSize
 
 // Strong Bearish Reversal: Large red body with upper shadow at resistance
-strongBearishBody = close[1] < open[1] and candleBody >= candleRange * 0.6  // Large red body (≥60%)
-strongBearishShadow = upperShadow >= candleRange * 0.2  // Some upper shadow (≥20%)
-strongBearishLower = lowerShadow <= candleRange * 0.15  // Minimal lower shadow (≤15%)
-strongBearishSize = candleRange > atr14Prev * 0.4  // Significant candle size
+strongBearishBody = closePrev < open1 and candleBody >= candleRange60  // Large red body (≥60%)
+strongBearishShadow = upperShadow >= candleRange20  // Some upper shadow (≥20%)
+strongBearishLower = lowerShadow <= candleRange15  // Minimal lower shadow (≤15%)
+strongBearishSize = candleRange > atrThreshold  // Significant candle size
 strongBearPattern = strongBearishBody and strongBearishShadow and strongBearishLower and strongBearishSize
 
 // Combine reversal patterns based on sensitivity
@@ -717,17 +688,17 @@ volumeStrength = volumePrev > avgVolumePrev * volumeThreshold ? 0.8 : 0.2
 plot(volumeStrength, "Volume Strength", color.purple, 1, plot.style_stepline)
 
 // Enhanced Signal Display with Confirmation System
-// Standard/Confirmed Signals
-plotshape(finalStandardLong and not upgradedStandardLong, title="Standard Long", style=shape.triangleup, location=location.bottom, color=standardLongColor, size=size.small, text="LONG")
-plotshape(finalStandardShort and not upgradedStandardShort, title="Standard Short", style=shape.triangledown, location=location.bottom, color=standardShortColor, size=size.small, text="SHORT")
+// Since baseStandardLong/baseStandardShort now only contain confirmed signals, show them with "C" text
+plotshape(baseStandardLong, title="Confirmed Long", style=shape.triangleup, location=location.bottom, color=standardLongColor, size=size.small, text="C")
+plotshape(baseStandardShort, title="Confirmed Short", style=shape.triangledown, location=location.bottom, color=standardShortColor, size=size.small, text="C")
 
-// Confirmed Signals (upgraded from consecutive early signals)
-plotshape(upgradedStandardLong, title="Confirmed Long", style=shape.triangleup, location=location.bottom, color=standardLongColor, size=size.small, text="C")
-plotshape(upgradedStandardShort, title="Confirmed Short", style=shape.triangledown, location=location.bottom, color=standardShortColor, size=size.small, text="C")
+// Raw standard signals (for reference only - not used for entries)
+plotshape(rawLongSignal and not upgradedStandardLong, title="Raw Long (Reference)", style=shape.triangleup, location=location.bottom, color=color.new(standardLongColor, 70), size=size.tiny, text="R")
+plotshape(rawShortSignal and not upgradedStandardShort, title="Raw Short (Reference)", style=shape.triangledown, location=location.bottom, color=color.new(standardShortColor, 70), size=size.tiny, text="R")
 
 // Early Entry Signals (only show non-confirmed early signals)
-plotshape(finalEarlyLong and strategy.position_size <= 0, title="Early Long", style=shape.triangleup, location=location.bottom, color=earlyLongColor, size=size.tiny, text="E")
-plotshape(finalEarlyShort and strategy.position_size >= 0, title="Early Short", style=shape.triangledown, location=location.bottom, color=earlyShortColor, size=size.tiny, text="E")
+plotshape(baseEarlyLong and strategy.position_size <= 0, title="Early Long", style=shape.triangleup, location=location.bottom, color=earlyLongColor, size=size.tiny, text="E")
+plotshape(baseEarlyShort and strategy.position_size >= 0, title="Early Short", style=shape.triangledown, location=location.bottom, color=earlyShortColor, size=size.tiny, text="E")
 
 // Signal labels removed for cleaner chart visualization
 // Signals are now indicated purely by triangle shapes and colors
@@ -834,8 +805,20 @@ if barstate.islast
 
         // Filter Debug
         if showFilters
-            signalText = combinedLongSignal ? (finalStandardLong ? (upgradedStandardLong ? "CONFIRMED" : "LONG") : earlyPath1 ? "E-1" : earlyPath2 ? "E-2" : earlyPath3 ? "E-3" : "E-4") : combinedShortSignal ? (finalStandardShort ? (upgradedStandardShort ? "CONFIRMED" : "SHORT") : earlyBearishPath1 ? "E-1" : earlyBearishPath2 ? "E-2" : earlyBearishPath3 ? "E-3" : "E-4") : "WAIT"
-            signalColor = combinedLongSignal ? (finalStandardLong ? (upgradedStandardLong ? color.lime : color.green) : color.yellow) : combinedShortSignal ? (finalStandardShort ? (upgradedStandardShort ? color.fuchsia : color.red) : color.orange) : color.gray
+            // Break down complex ternary operators for Pine Script v6 compliance
+            longStandardText = upgradedStandardLong ? "CONFIRMED" : "LONG"
+            longEarlyText = earlyPath1 ? "E-1" : earlyPath2 ? "E-2" : earlyPath3 ? "E-3" : "E-4"
+            shortStandardText = upgradedStandardShort ? "CONFIRMED" : "SHORT"
+            shortEarlyText = earlyBearishPath1 ? "E-1" : earlyBearishPath2 ? "E-2" : earlyBearishPath3 ? "E-3" : "E-4"
+            longSignalText = baseStandardLong ? longStandardText : longEarlyText
+            shortSignalText = baseStandardShort ? shortStandardText : shortEarlyText
+            signalText = combinedLongSignal ? longSignalText : combinedShortSignal ? shortSignalText : "WAIT"
+            
+            longStandardColor = upgradedStandardLong ? color.lime : color.green
+            shortStandardColor = upgradedStandardShort ? color.fuchsia : color.red
+            longSignalColor = baseStandardLong ? longStandardColor : color.yellow
+            shortSignalColor = baseStandardShort ? shortStandardColor : color.orange
+            signalColor = combinedLongSignal ? longSignalColor : combinedShortSignal ? shortSignalColor : color.gray
             table.cell(perfTable, 0, rowIndex, "Signal Ready", text_color=color.black)
             table.cell(perfTable, 1, rowIndex, signalText, text_color=signalColor)
             rowIndex += 1
@@ -849,22 +832,32 @@ if barstate.islast
             // Use the same cooldown logic as the actual strategy
             effectiveCooldownForDisplay = currentSignalIsEarly ? earlyCooldownBars : standardCooldownBars
             signalTypeForDisplay = currentSignalIsEarly ? "Early" : "Standard"
-            cooldownText = useSignalCooldown ? (barsFromLastSignal >= effectiveCooldownForDisplay ? "READY" : str.tostring(effectiveCooldownForDisplay - barsFromLastSignal) + " bars (" + signalTypeForDisplay + ")") : "OFF"
-            cooldownColor = useSignalCooldown ? (barsFromLastSignal >= effectiveCooldownForDisplay ? color.green : color.orange) : color.gray
+            // Break down complex cooldown logic for Pine Script v6 compliance
+            cooldownReady = barsFromLastSignal >= effectiveCooldownForDisplay
+            cooldownBarsText = str.tostring(effectiveCooldownForDisplay - barsFromLastSignal) + " bars (" + signalTypeForDisplay + ")"
+            cooldownActiveText = cooldownReady ? "READY" : cooldownBarsText
+            cooldownText = useSignalCooldown ? cooldownActiveText : "OFF"
+            cooldownColor = useSignalCooldown ? (cooldownReady ? color.green : color.orange) : color.gray
             table.cell(perfTable, 0, rowIndex, "Signal Cooldown", text_color=color.black)
             table.cell(perfTable, 1, rowIndex, cooldownText, text_color=cooldownColor)
             rowIndex += 1
 
+            // Break down filter status logic for Pine Script v6 compliance
             filterText = finalLongSignal ? "LONG OK" : finalShortSignal ? "SHORT OK" : combinedLongSignal ? "LONG BLOCKED" : combinedShortSignal ? "SHORT BLOCKED" : "NONE"
-            filterColor = finalLongSignal ? color.green : finalShortSignal ? color.red : (combinedLongSignal or combinedShortSignal) ? color.orange : color.gray
+            filterBlocked = combinedLongSignal or combinedShortSignal
+            filterColor = finalLongSignal ? color.green : finalShortSignal ? color.red : filterBlocked ? color.orange : color.gray
             table.cell(perfTable, 0, rowIndex, "Filter Status", text_color=color.black)
             table.cell(perfTable, 1, rowIndex, filterText, text_color=filterColor)
             rowIndex += 1
 
         // Smart Exit Debug
         if showSmartExit
-            smartExitText = smartExitSignal ? (longEmaBreak or shortEmaBreak ? "EMA BREAK" : "REVERSAL") : (useReversalExits or useEmaBreakExits) ? "MONITORING" : "OFF"
-            smartExitColor = smartExitSignal ? color.orange : (useReversalExits or useEmaBreakExits) ? color.blue : color.gray
+            // Break down smart exit logic for Pine Script v6 compliance
+            smartExitActive = longEmaBreak or shortEmaBreak
+            smartExitType = smartExitActive ? "EMA BREAK" : "REVERSAL"
+            smartExitMonitoring = useReversalExits or useEmaBreakExits
+            smartExitText = smartExitSignal ? smartExitType : smartExitMonitoring ? "MONITORING" : "OFF"
+            smartExitColor = smartExitSignal ? color.orange : smartExitMonitoring ? color.blue : color.gray
             table.cell(perfTable, 0, rowIndex, "Smart Exit", text_color=color.black)
             table.cell(perfTable, 1, rowIndex, smartExitText, text_color=smartExitColor)
             rowIndex += 1
@@ -877,13 +870,15 @@ if barstate.islast
 
         // Pattern Debug
         if showPatterns
+            // Break down pattern debug logic for Pine Script v6 compliance
             patternDebugText = hammerPattern ? "HAMMER" : strongBullPattern ? "STRONG-BULL" : strongBearPattern ? "STRONG-BEAR" : shootingStarPattern ? "SHOOTING" : dojiPattern ? "DOJI" : bullishEngulfing ? "BULL-ENG" : bearishEngulfing ? "BEAR-ENG" : "NO-MATCH"
-            patternDebugColor = (hammerPattern or strongBullPattern or strongBearPattern or shootingStarPattern or dojiPattern or bullishEngulfing or bearishEngulfing) ? color.green : color.orange
+            patternDetected = hammerPattern or strongBullPattern or strongBearPattern or shootingStarPattern or dojiPattern or bullishEngulfing or bearishEngulfing
+            patternDebugColor = patternDetected ? color.green : color.orange
             table.cell(perfTable, 0, rowIndex, "Pattern Debug", text_color=color.black)
             table.cell(perfTable, 1, rowIndex, patternDebugText, text_color=patternDebugColor)
             rowIndex += 1
 
-            ratioText = "L:" + str.tostring(lowerShadow/candleRange, "#.##") + " B:" + str.tostring(candleBody/candleRange, "#.##") + " U:" + str.tostring(upperShadow/candleRange, "#.##")
+            ratioText = candleRange > 0 ? "L:" + str.tostring(lowerShadow/candleRange, "#.##") + " B:" + str.tostring(candleBody/candleRange, "#.##") + " U:" + str.tostring(upperShadow/candleRange, "#.##") : "L:0.00 B:0.00 U:0.00"
             table.cell(perfTable, 0, rowIndex, "Candle Ratios", text_color=color.black)
             table.cell(perfTable, 1, rowIndex, ratioText, text_color=color.blue)
             rowIndex += 1
@@ -917,16 +912,24 @@ if barstate.islast
 //=====================================================================================================================
 // Final Filtered Alerts (only fire when signals pass all filters)
 if finalLongSignal
-    signalType = finalStandardLong ? (upgradedStandardLong ? "Confirmed" : "Standard") : earlyPath1 ? "E-Conservative" : earlyPath2 ? "E-Momentum" : earlyPath3 ? "E-Trend-Continuation" : "E-Ultra-Breakout"
+    // Since baseStandardLong only contains confirmed signals, signal type logic simplified
+    earlyLongType = earlyPath1 ? "E-Conservative" : earlyPath2 ? "E-Momentum" : earlyPath3 ? "E-Trend-Continuation" : "E-Ultra-Breakout"
+    signalType = baseStandardLong ? "Confirmed" : earlyLongType
     alert("🎯 LONG Signal (" + signalType + ") - All filters passed", alert.freq_once_per_bar)
 
 if finalShortSignal
-    signalType = finalStandardShort ? (upgradedStandardShort ? "Confirmed" : "Standard") : earlyBearishPath1 ? "E-Conservative" : earlyBearishPath2 ? "E-Momentum" : earlyBearishPath3 ? "E-Trend-Continuation" : "E-Ultra-Breakdown"
+    // Since baseStandardShort only contains confirmed signals, signal type logic simplified
+    earlyShortType = earlyBearishPath1 ? "E-Conservative" : earlyBearishPath2 ? "E-Momentum" : earlyBearishPath3 ? "E-Trend-Continuation" : "E-Ultra-Breakdown"
+    signalType = baseStandardShort ? "Confirmed" : earlyShortType
     alert("🎯 SHORT Signal (" + signalType + ") - All filters passed", alert.freq_once_per_bar)
 
 // Filtered Signal Alert (when raw signals are blocked)
 if (combinedLongSignal and not finalLongSignal) or (combinedShortSignal and not finalShortSignal)
-    blockReason = not longCooldownOk or not shortCooldownOk ? "Cooldown" : not longReversalOk or not shortReversalOk ? "Rapid-Reversal" : not signalStrengthLong or not signalStrengthShort ? "Weak-Signal" : "Market-Structure"
+    // Break down complex block reason logic for Pine Script v6 compliance
+    cooldownBlocked = not longCooldownOk or not shortCooldownOk
+    reversalBlocked = not longReversalOk or not shortReversalOk
+    signalBlocked = not signalStrengthLong or not signalStrengthShort
+    blockReason = cooldownBlocked ? "Cooldown" : reversalBlocked ? "Rapid-Reversal" : signalBlocked ? "Weak-Signal" : "Market-Structure"
     alert("⚠️ Signal Blocked - Reason: " + blockReason, alert.freq_once_per_bar)
 
 if trailingActive and not trailingActive[1]
@@ -943,6 +946,7 @@ if smartExitShort
 
 // Reversal Detection Alerts (early warning)
 if reversalDetected and volumeConfirmed and not smartExitSignal
+    // Break down complex reversal type logic for Pine Script v6 compliance
     reversalType = hammerPattern ? "Hammer" : strongBullishReversal ? "Strong Bullish" : strongBearishReversal ? "Strong Bearish" : dojiPattern ? "Doji" : bullishEngulfing ? "Bullish Engulfing" : bearishEngulfing ? "Bearish Engulfing" : shootingStarPattern ? "Shooting Star" : "Pattern"
     reversalDirection = bullishReversalDetected ? "BULLISH" : "BEARISH"
     alert("⚠️ " + reversalDirection + " Reversal Pattern: " + reversalType + " - Monitor position", alert.freq_once_per_bar)
@@ -950,7 +954,7 @@ if reversalDetected and volumeConfirmed and not smartExitSignal
 //=====================================================================================================================
 // 🧪 EXPERIMENTAL DEVELOPMENT NOTES
 //=====================================================================================================================
-// Development Status: v1.4.3 Complete Signal Suppression - E and C Signals
+// Development Status: v1.5 Confirmed Signal Only Strategy - Enhanced Filtering
 // Target Improvements:
 // 1. Enhanced trend filtering via EMA ribbon system
 // 2. Reduced false signals through multi-layer confirmation
@@ -960,130 +964,22 @@ if reversalDetected and volumeConfirmed and not smartExitSignal
 // 6. ✅ Signal filtering system to prevent rapid-fire signals and overtrading
 // 7. ✅ NEW: Smart Exit System with reversal detection and EMA break exits
 //
-// Recent Updates (v1.4.3):
-// - 🚫 COMPLETE SUPPRESSION: Now suppresses BOTH "E" early signals AND "C" confirmation signals
-// - 🎯 SINGLE SIGNAL RULE: Only one E→C sequence per direction - perfect for automation
-// - 🔒 CONFIRMATION LOCK: Prevents multiple confirmations in same direction
-// - 🤖 AUTOMATION PERFECT: Absolutely no redundant signals that could trigger unwanted trades
-// - 💰 MAXIMUM SAFETY: Complete protection against over-trading in automated systems
-// - 📊 CLEAN PATTERN: E↑ → C↑ → (suppress ALL) → E↓ → C↓ → (suppress ALL)
+// Recent Updates (v1.5):
+// - 🎯 CONFIRMED SIGNAL ONLY: Strategy now exclusively trades confirmed (C) signals for maximum reliability
+// - 🔧 LOGIC CONSISTENCY: Removed raw signal paths from entry logic while maintaining early signal detection
+// - 📊 VISUAL CLARITY: Updated charts to show C=Confirmed, E=Early, R=Raw Reference signals
+// - 🚨 ALERT ACCURACY: Fixed alert messages to match actual trading behavior
+// - ⚡ PERFORMANCE: Optimized calculations and eliminated redundant operations
+// - 🛡️ ERROR HANDLING: Added comprehensive division-by-zero protection and error handling
+// - 📝 PINE SCRIPT v6: Full compliance with Pine Script v6 syntax requirements
 //
-// Previous Updates (v1.4.2):
-// - 🤖 AUTOMATION SAFETY: Removed time-based reset - suppression now indefinite until direction change
-// - 🚫 NO REDUNDANT SIGNALS: Prevents additional trades in same direction that could cause losses
-// - 🔒 DIRECTION LOCK: E↑ → C↑ → (suppress indefinitely) → E↓ → C↓ → (suppress indefinitely)
-// - 💰 PROFIT PROTECTION: Eliminates unnecessary signals that could trigger unwanted trades
-// - 🎯 CLEAN AUTOMATION: Only one signal per direction change - perfect for automated trading
-// - 📊 SIMPLIFIED DEBUG: Removed time-based plots, focus on direction and suppression state
-//
-// Previous Updates (v1.4.1):
-// - ✅ CONFIRMATION RESTORED: Re-implemented E→C signal progression with simplified logic
-// - 🎯 CORRECT BEHAVIOR: Now follows expected pattern E↑ → C↑ (suppress) → E↓ → C↓ (suppress)
-// - 🔧 SIMPLIFIED LOGIC: 6-step process that's easy to understand and debug
-// - 🚫 POST-CONFIRMATION SUPPRESSION: Suppresses additional signals for 10 bars after confirmation
-// - 🔄 CLEAN RESETS: Automatic reset on direction change or window expiry
-// - 📊 ENHANCED DEBUG: Shows confirmation detection and suppression state clearly
-// - 💡 MAINTAINABLE: Simple step-by-step logic eliminates complex state management bugs
-//
-// Previous Updates (v1.4.0) - MAJOR SIMPLIFICATION:
-// - 🔥 SYSTEM REWRITE: Completely replaced complex confirmation/suppression system with simple approach
-// - 🚫 DIRECT SUPPRESSION: Now directly suppresses additional "E" signals in same direction for 8 bars
-// - 🎯 ELIMINATION: Removed complex confirmation signal generation, state tracking, and reset logic
-// - 📊 SIMPLE TRACKING: Only tracks last early signal direction and timing
-// - 🔄 CLEAN RESET: Automatic reset on direction change or window expiry
-// - 💡 RELIABLE: Simple logic eliminates the bugs that plagued the complex system
-// - 🎛️ MAINTENANCE: Much easier to debug and maintain with fewer moving parts
-// - ✅ EFFECTIVE: Achieves the same goal (suppress redundant E signals) with minimal complexity
-//
-// Previous Updates (v1.3.2):
-// - 🐛 CRITICAL FIX: Fixed suppression logic failure - lastConfirmationDirection now properly resets
-// - 🔄 STATE RESET: Added comprehensive state reset when suppression window expires
-// - 🎯 LOGIC COMPLETION: Suppression now works correctly for full signal cycles (E → C → suppressed Es)
-// - 📊 ENHANCED DEBUG: Added tracking for confirmation direction and bars from last confirmation
-// - 🚫 REDUNDANCY ELIMINATION: Properly prevents redundant "E" signals after "C" confirmations
-// - 💡 CYCLE MANAGEMENT: Ensures clean state reset for next confirmation/suppression cycle
-//
-// Previous Updates (v1.3.1):
-// - 🐛 DEBUG FIX: Fixed cooldown display in debug dashboard to show accurate countdown
-// - 🎯 LOGIC ALIGNMENT: Dashboard now uses same cooldown logic as actual strategy execution
-// - 📊 ENHANCED DISPLAY: Shows signal type (Early/Standard) alongside cooldown countdown
-// - 🔍 USER CLARITY: Eliminates confusion where dashboard showed different cooldown than actual strategy
-// - ✅ VALIDATION TOOL: Debug dashboard now reliable for understanding when trades will execute
-//
-// Previous Updates (v1.3.0) - MAJOR REFACTORING:
-// - 🏗️ STRUCTURAL OVERHAUL: Completely rebuilt signal filtering system to eliminate circular dependencies
-// - 🔄 LOGIC REORDER: Proper sequential flow - cooldown → signal type → filters → final signals
-// - 🎯 COOLDOWN FIX: Timer updates moved to actual trade execution, not signal calculation
-// - 📊 DEPENDENCY ELIMINATION: Removed circular references between finalLongSignal and longCooldownOk
-// - 🚫 REDUNDANCY REMOVAL: Eliminated duplicate calculations and misplaced code
-// - 🔧 PROPER SEPARATION: Independent calculation of cooldown periods, signal types, and filters
-// - 💡 TRADE EXECUTION: Cooldown timers now update only when trades are actually executed
-// - 🎛️ MAINTAINABILITY: Clear step-by-step filtering process for easier debugging and maintenance
-//
-// Previous Updates (v1.2.6):
-// - 🐛 CRITICAL FIX: Fixed signal cooldown logic bug - timers now update only on actual trade execution
-// - 🔧 LOGIC FIX: Decoupled market structure filter from signal strength filter
-// - 🎛️ NEW INPUT: Added independent "Enable Market Structure Filter" toggle
-// - 📊 TIMER ACCURACY: Cooldown periods now function correctly without perpetual reset
-// - 🎯 FILTER INDEPENDENCE: Users can now disable signal strength while keeping market structure filter
-// - 💡 TRADE EXECUTION: Strategy will now properly execute trades after cooldown periods expire
-//
-// Previous Updates (v1.2.5):
-// - 🚫 EARLY SUPPRESSION: Suppress redundant "E" signals after "C" confirmation signals in same direction
-// - 📊 DIRECTION TRACKING: Added lastConfirmationDirection to track confirmation signal direction
-// - ⏰ SUPPRESSION WINDOW: Early signals suppressed for confirmation window + 2 bars
-// - 🔄 SMART RESET: Suppression resets on direction change or when window expires
-// - 🎯 NOISE REDUCTION: Eliminates redundant early signals while preserving confirmation logic
-// - 🔍 ENHANCED DEBUG: Added suppression debug plots for better analysis
-//
-// Previous Updates (v1.2.4):
-// - 🔧 ENHANCED SUPPRESSION: Improved confirmation signal suppression with dual tracking
-// - 📊 TIMING PROTECTION: Added lastConfirmationBar tracking to prevent rapid-fire confirmations
-// - 🎯 RACE CONDITION FIX: Separated confirmation state updates from signal evaluation
-// - 🔍 IMPROVED DEBUG: Added canShowConfirmation debug plot for better analysis
-// - 📈 ROBUST LOGIC: More reliable single confirmation per early signal sequence
-// - 🚀 PERFORMANCE: Reduced visual clutter while maintaining all confirmation logic
-//
-// Previous Updates (v1.2.3):
-// - 🔇 CONFIRMATION SUPPRESSION: Prevents multiple 'C' confirmation signals in close succession
-// - 📊 STATE TRACKING: Added confirmationAlreadyShown variable to track confirmation display state
-// - 🔄 SMART RESET: Confirmation state resets on direction change, standard signals, or window expiry
-// - 🎯 CLEANER SIGNALS: Only shows first confirmation signal per early signal sequence
-// - 🚀 ENHANCED UX: Reduces visual clutter and improves signal clarity on charts
-//
-// Previous Updates (v1.2.2):
-// - 🆕 STRONG REVERSAL PATTERNS: Added Strong Bullish/Bearish Reversal detection
-// - 📊 PATTERN CRITERIA: Large body (≥60%) + shadow (≥20%) + minimal opposite shadow (≤15%)
-// - 🎯 9:15 SCENARIO: Specifically targets patterns like L:0.32 B:0.68 U:0.0 reversal
-// - 🔍 ENHANCED DEBUG: Pattern Debug shows specific pattern type detected
-// - ⚡ CONSERVATIVE TIER: Strong patterns included in conservative sensitivity level
-// - 🚨 ALERT INTEGRATION: Strong reversal alerts with pattern type identification
-// - 💪 REAL-WORLD EFFECTIVENESS: Captures marubozu-style reversals at key levels
-
-// Previous Updates (v1.2.1):
-// - 🔧 CALIBRATED: Reversal pattern detection thresholds for real-world effectiveness
-// - 🎛️ USER CONTROLS: Configurable pattern ratios (Hammer Shadow, Body Size, Upper Shadow)
-// - 🔍 DEBUG SYSTEM: Optional pattern detection debugging with detailed breakdown
-// - 📊 ENHANCED DETECTION: Improved hammer pattern criteria (0.6→0.4 shadow, 0.3→0.4 body)
-// - ⚙️ VOLUME FLEXIBILITY: Volume confirmation now optional (default OFF for testing)
-// - 🔬 PATTERN ANALYSIS: Detailed candle component analysis and ratio display
-// - 🎯 REAL-WORLD READY: Calibrated against actual market patterns (9:15 hammer scenario)
-
-// Previous Updates (v1.2):
-// - Implemented comprehensive Smart Exit System with reversal pattern detection
-// - Added 5 reversal patterns: Hammer, Doji, Shooting Star, Bullish/Bearish Engulfing
-// - Configurable reversal sensitivity (Conservative, Moderate, Aggressive)
-// - EMA break exit logic with selectable EMA levels (Fast/Pivot/Slow)
-// - Volume confirmation for reversal patterns (1.2x average volume)
-// - Enhanced dashboard with Smart Exit and Reversal Alert status
-// - Comprehensive alert system for exits and early reversal warnings
-// - Prevents major drawdowns through technical reversal protection
-//
-// Previous Updates (v1.1):
-// - Added 4 different early entry paths (Conservative, Momentum, Trend-Continuation, Ultra-Breakout)
-// - Implemented signal cooldown system (default 5 bars minimum between signals)
-// - Added rapid reversal prevention (blocks opposite signals too quickly)
-// - Integrated signal strength filtering for quality control
+// Key Features:
+// - ✅ Multi-path Early Entry System: 4 detection paths for maximum opportunity capture
+// - ✅ Signal Confirmation: E→C progression with intelligent suppression system
+// - ✅ Smart Exit System: Reversal pattern detection and EMA break exits
+// - ✅ Advanced Filtering: Cooldown system, signal strength, and market structure filters
+// - ✅ Risk Management: ATR-based positioning with trailing stops
+// - ✅ Comprehensive Debug: Real-time performance monitoring and signal analysis
 //
 // Critical Problems Solved:
 // - ✅ Reversal Exit Protection: Addresses $800+ adverse moves through pattern detection

@@ -1,4 +1,4 @@
-// EMA Ribbon Overlay Indicator v1.0 - COMPANION TO STRATEGY
+// EMA Ribbon Overlay Indicator v2.0 - ENHANCED SIGNAL SYSTEM
 // Restores original ribbon visualization on price chart
 // Use alongside ema-ribbon-macd-hybrid strategy for complete analysis
 //
@@ -13,7 +13,7 @@
 //
 //@version=6
 
-indicator("EMA Ribbon Overlay v1", "RIBBON_OV", overlay=true, max_bars_back=200)
+indicator("EMA Ribbon Overlay v2.0", "RIBBON_OV", overlay=true, max_bars_back=200)
 
 //=====================================================================================================================
 // 🚧 COMPANION INDICATOR WARNING
@@ -66,15 +66,14 @@ slowEmaPrev = slowEma[1]
 
 bullishRibbon = fastEmaPrev > pivotEmaPrev and pivotEmaPrev > slowEmaPrev
 bearishRibbon = fastEmaPrev < pivotEmaPrev and pivotEmaPrev < slowEmaPrev
-ribbonAligned = bullishRibbon or bearishRibbon
 
 //=====================================================================================================================
 // 🎨 RIBBON VISUALIZATION - ORIGINAL STYLE RESTORED
 //=====================================================================================================================
-// EMA Line Plots
-fastEmaPlot = plot(showEmaLines ? fastEma : na, "Fast EMA (8)", color.new(color.lime, 20), emaLineWidth)
-pivotEmaPlot = plot(showEmaLines ? pivotEma : na, "Pivot EMA (21)", color.new(color.orange, 20), emaLineWidth)
-slowEmaPlot = plot(showEmaLines ? slowEma : na, "Slow EMA (34)", color.new(color.red, 20), emaLineWidth)
+// EMA Line Plots (labels reflect default values - see inputs for current settings)
+fastEmaPlot = plot(showEmaLines ? fastEma : na, "Fast EMA", color.new(color.lime, 20), emaLineWidth)
+pivotEmaPlot = plot(showEmaLines ? pivotEma : na, "Pivot EMA", color.new(color.orange, 20), emaLineWidth)
+slowEmaPlot = plot(showEmaLines ? slowEma : na, "Slow EMA", color.new(color.red, 20), emaLineWidth)
 
 // Ribbon Fill Areas - ORIGINAL STYLE
 // Fast-Pivot Ribbon Fill
@@ -85,10 +84,10 @@ fill(fastEmaPlot, pivotEmaPlot, color=fastPivotFillColor, title="Fast-Pivot Ribb
 pivotSlowFillColor = pivotEma > slowEma ? color.new(color.green, ribbonTransparency) : color.new(color.maroon, ribbonTransparency)
 fill(pivotEmaPlot, slowEmaPlot, color=pivotSlowFillColor, title="Pivot-Slow Ribbon")
 
-// Full Ribbon Direction Indicator
-fullRibbonColor = bullishRibbon ? color.new(color.lime, ribbonTransparency + 10) : 
-                  bearishRibbon ? color.new(color.red, ribbonTransparency + 10) : 
-                  color.new(color.gray, ribbonTransparency + 20)
+// Full Ribbon Direction Indicator (transparency-safe)
+fullRibbonColor = bullishRibbon ? color.new(color.lime, math.min(100, ribbonTransparency + 10)) : 
+                  bearishRibbon ? color.new(color.red, math.min(100, ribbonTransparency + 10)) : 
+                  color.new(color.gray, math.min(100, ribbonTransparency + 20))
 
 // Optional: Full span fill for stronger visual impact  
 showFullSpan = input.bool(false, "Show Full Ribbon Span", group=grpViz, tooltip="Fill entire fast-slow EMA span")
@@ -108,10 +107,27 @@ smaContextColor = sma50 > sma200 ? color.new(color.green, 98) : color.new(color.
 bgcolor(showSmaLevels ? smaContextColor : na, title="SMA Context Background")
 
 //=====================================================================================================================
+// 🌊 MACD SIGNAL SYSTEM - ENHANCED E/C SIGNALS
+//=====================================================================================================================
+grpMACD = "🌊 MACD Signal System"
+macdFast = input.int(8, "MACD Fast", minval=6, maxval=15, group=grpMACD, tooltip="Proven 8,21,5 system")
+macdSlow = input.int(21, "MACD Slow", minval=15, maxval=35, group=grpMACD)
+macdSignal = input.int(5, "MACD Signal", minval=3, maxval=15, group=grpMACD)
+
+// E/C Signal Configuration
+grpSignals = "🎯 E/C Signal System"
+useEarlyEntry = input.bool(true, "Enable Early (E) Signals", group=grpSignals, tooltip="Show early entry opportunities")
+useSignalConfirmation = input.bool(true, "Enable Confirmation (C) Signals", group=grpSignals, tooltip="Upgrade consecutive early signals")
+confirmationWindow = input.int(5, "Confirmation Window (bars)", minval=1, maxval=10, group=grpSignals, tooltip="Time window for signal confirmation")
+useAggressiveMacd = input.bool(false, "Aggressive MACD Threshold", group=grpSignals, tooltip="OFF = conservative (-0.15), ON = aggressive (-0.05)")
+useSimpleReversal = input.bool(true, "Use Simple Reversal Pattern", group=grpSignals, tooltip="More aggressive reversal detection")
+useMultiplePaths = input.bool(true, "Enable Multiple Entry Paths", group=grpSignals, tooltip="Alternative signal paths for better opportunity capture")
+useUltraEarly = input.bool(false, "Enable Ultra-Aggressive Mode", group=grpSignals, tooltip="Maximum sensitivity")
+
+//=====================================================================================================================
 // 🎯 RIBBON STRENGTH INDICATORS
 //=====================================================================================================================
 grpStrength = "💪 Ribbon Strength"
-showStrengthSignals = input.bool(true, "Show Strength Signals", group=grpStrength)
 minRibbonGap = input.float(0.1, "Min Ribbon Gap %", minval=0.05, maxval=0.5, step=0.05, group=grpStrength)
 
 // Ribbon Strength Analysis
@@ -123,7 +139,169 @@ ribbonStrengthOk = fastPivotGap >= minRibbonGap and pivotSlowGap >= minRibbonGap
 // Ribbon strength is now indicated purely by ribbon fills and colors
 
 //=====================================================================================================================
-// 📊 RIBBON STATUS TABLE
+// 🌊 MACD CALCULATIONS
+//=====================================================================================================================
+[macdLine, signalLine, macdHist] = ta.macd(close, macdFast, macdSlow, macdSignal)
+macdPrev = macdLine[1]
+macdPrev2 = macdLine[2]
+
+// Dynamic MACD threshold based on user preference
+macdThreshold = useAggressiveMacd ? -0.05 : -0.15
+oversoldMacdTurning = (macdPrev < macdThreshold) and (macdPrev > macdPrev2)
+overboughtMacdTurning = (macdPrev > -macdThreshold) and (macdPrev < macdPrev2)
+
+// Previous bar values for signal calculations
+closePrev = close[1]
+open1 = open[1]
+low1 = low[1]
+high1 = high[1]
+low2 = low[2]
+high2 = high[2]
+close2 = close[2]
+
+//=====================================================================================================================
+// ⚡ EARLY SIGNAL LOGIC - MULTI-PATH SYSTEM
+//=====================================================================================================================
+// BULLISH PATHS
+// PATH 1: Original Early Entry Conditions (Conservative)
+earlyBullishSetup = (closePrev > pivotEmaPrev) and (pivotEmaPrev > slowEmaPrev)
+
+// Enhanced Reversal Pattern Options
+strictBullishReversal = (low1 < low2) and (closePrev > open1) and (closePrev > close2)
+simpleBullishReversal = (closePrev > open1) and (closePrev > close2)
+ultraBullishReversal = closePrev > close2
+momentumBullishReversal = (closePrev > open1) or (high1 > high2)
+
+// Select reversal pattern based on settings
+strongBullishReversal = useUltraEarly ? (momentumBullishReversal or ultraBullishReversal) : (useSimpleReversal ? simpleBullishReversal : strictBullishReversal)
+
+// PATH 2: Momentum-Based Entry
+priceAboveFast = closePrev > fastEmaPrev
+fastEmaTrendingUp = fastEmaPrev > fastEma[2]
+momentumSetup = priceAboveFast and fastEmaTrendingUp
+macdTurningPositive = macdPrev > macdPrev2
+
+// PATH 3: Trend Continuation Entry
+trendContinuationSetup = closePrev > pivotEmaPrev
+macdBelowZero = macdPrev < 0
+continuationReversal = useUltraEarly ? ultraBullishReversal : momentumBullishReversal
+
+// PATH 4: Pure Momentum Entry
+pureBreakout = closePrev > math.max(high1, high2)
+
+// Multiple early entry paths for LONG
+earlyPath1 = earlyBullishSetup and strongBullishReversal and oversoldMacdTurning
+earlyPath2 = useMultiplePaths and momentumSetup and ultraBullishReversal and macdTurningPositive
+earlyPath3 = useMultiplePaths and trendContinuationSetup and continuationReversal and macdBelowZero
+earlyPath4 = useUltraEarly and pureBreakout and macdTurningPositive
+
+// Combined early long signal
+earlyLongSignal = useEarlyEntry and (earlyPath1 or earlyPath2 or earlyPath3 or earlyPath4) and ribbonStrengthOk
+
+// BEARISH PATHS (Mirror logic)
+earlyBearishSetup = (closePrev < pivotEmaPrev) and (pivotEmaPrev < slowEmaPrev)
+
+// Enhanced Bearish Reversal Patterns
+strictBearishReversal = (high1 > high2) and (closePrev < open1) and (closePrev < close2)
+simpleBearishReversal = (closePrev < open1) and (closePrev < close2)
+ultraBearishReversal = closePrev < close2
+momentumBearishReversal = (closePrev < open1) or (low1 < low2)
+
+// Select bearish reversal pattern
+strongBearishReversal = useUltraEarly ? (momentumBearishReversal or ultraBearishReversal) : (useSimpleReversal ? simpleBearishReversal : strictBearishReversal)
+
+// PATH 2: Bearish Momentum Setup
+priceBelowFast = closePrev < fastEmaPrev
+fastEmaTrendingDown = fastEmaPrev < fastEma[2]
+bearishMomentumSetup = priceBelowFast and fastEmaTrendingDown
+macdTurningNegative = macdPrev < macdPrev2
+
+// PATH 3: Bearish Trend Continuation
+bearishContinuationSetup = closePrev < pivotEmaPrev
+macdAboveZero = macdPrev > 0
+bearishContinuationReversal = useUltraEarly ? ultraBearishReversal : momentumBearishReversal
+
+// PATH 4: Pure Bearish Momentum
+pureBreakdown = closePrev < math.min(low1, low2)
+
+// Bearish early entry paths
+earlyBearishPath1 = earlyBearishSetup and strongBearishReversal and overboughtMacdTurning
+earlyBearishPath2 = useMultiplePaths and bearishMomentumSetup and ultraBearishReversal and macdTurningNegative
+earlyBearishPath3 = useMultiplePaths and bearishContinuationSetup and bearishContinuationReversal and macdAboveZero
+earlyBearishPath4 = useUltraEarly and pureBreakdown and macdTurningNegative
+
+// Combined early short signal
+earlyShortSignal = useEarlyEntry and (earlyBearishPath1 or earlyBearishPath2 or earlyBearishPath3 or earlyBearishPath4) and ribbonStrengthOk
+
+//=====================================================================================================================
+// ✅ SIGNAL CONFIRMATION & SUPPRESSION SYSTEM
+//=====================================================================================================================
+// Signal Evolution Tracking
+var int lastRawSignalType = 0  // 0=none, 1=early_long, -1=early_short
+var int lastRawSignalBar = -1
+var int lastEarlySignalDirection = 0  // Track last early signal direction (1=long, -1=short, 0=none)
+var int lastEarlySignalBar = -1
+
+// Current bar RAW signal detection
+currentBarRawEarlyLong = earlyLongSignal
+currentBarRawEarlyShort = earlyShortSignal
+
+// Step 1: Simple confirmation detection
+barsFromLastRawSignal = bar_index - lastRawSignalBar
+isWithinConfirmationWindow = barsFromLastRawSignal <= confirmationWindow and barsFromLastRawSignal > 0
+
+// Simple confirmation logic: second early signal in same direction becomes confirmation
+confirmedLongSignal = useSignalConfirmation and currentBarRawEarlyLong and (lastRawSignalType == 1) and isWithinConfirmationWindow and (lastEarlySignalDirection != 1)
+confirmedShortSignal = useSignalConfirmation and currentBarRawEarlyShort and (lastRawSignalType == -1) and isWithinConfirmationWindow and (lastEarlySignalDirection != -1)
+
+// Step 2: Track confirmation state for suppression
+if confirmedLongSignal
+    lastEarlySignalDirection := 1
+    lastEarlySignalBar := bar_index
+else if confirmedShortSignal
+    lastEarlySignalDirection := -1
+    lastEarlySignalBar := bar_index
+
+// Step 3: Comprehensive suppression after confirmation
+suppressEarlyLong = (lastEarlySignalDirection == 1) and (lastEarlySignalBar != -1)
+suppressEarlyShort = (lastEarlySignalDirection == -1) and (lastEarlySignalBar != -1)
+
+// Step 4: Track early signal history for confirmation detection
+if currentBarRawEarlyLong
+    lastRawSignalType := 1
+    lastRawSignalBar := bar_index
+else if currentBarRawEarlyShort
+    lastRawSignalType := -1
+    lastRawSignalBar := bar_index
+
+// Step 5: Reset suppression ONLY on direction change
+if (lastEarlySignalDirection == 1 and currentBarRawEarlyShort) or (lastEarlySignalDirection == -1 and currentBarRawEarlyLong)
+    lastEarlySignalDirection := 0
+    lastEarlySignalBar := -1
+
+// Final signals with suppression applied
+finalEarlyLong = earlyLongSignal and not suppressEarlyLong
+finalEarlyShort = earlyShortSignal and not suppressEarlyShort
+
+//=====================================================================================================================
+// 🎨 E/C SIGNAL VISUALIZATION
+//=====================================================================================================================
+// Signal Colors
+earlyLongColor = color.new(color.yellow, 0)
+earlyShortColor = color.new(color.orange, 0)
+confirmedLongColor = color.new(color.lime, 0)
+confirmedShortColor = color.new(color.red, 0)
+
+// Early Entry Signals (E)
+plotshape(finalEarlyLong, title="Early Long (E)", style=shape.triangleup, location=location.belowbar, color=earlyLongColor, size=size.tiny, text="E")
+plotshape(finalEarlyShort, title="Early Short (E)", style=shape.triangledown, location=location.abovebar, color=earlyShortColor, size=size.tiny, text="E")
+
+// Confirmation Signals (C)
+plotshape(confirmedLongSignal, title="Confirmed Long (C)", style=shape.triangleup, location=location.belowbar, color=confirmedLongColor, size=size.small, text="C")
+plotshape(confirmedShortSignal, title="Confirmed Short (C)", style=shape.triangledown, location=location.abovebar, color=confirmedShortColor, size=size.small, text="C")
+
+//=====================================================================================================================
+// 📊 ENHANCED STATUS TABLE
 //=====================================================================================================================
 grpTable = "📊 Status Display"
 showStatusTable = input.bool(true, "Show Ribbon Status Table", group=grpTable)
@@ -150,37 +328,55 @@ if barstate.islast and showStatusTable
     table.cell(ribbonTable, 0, 4, "Pivot EMA", text_color=color.black)
     table.cell(ribbonTable, 1, 4, str.tostring(pivotEma, "#.##"), text_color=color.orange)
     
-    table.cell(ribbonTable, 0, 5, "Slow EMA", text_color=color.black)
-    table.cell(ribbonTable, 1, 5, str.tostring(slowEma, "#.##"), text_color=color.red)
+    table.cell(ribbonTable, 0, 5, "MACD Status", text_color=color.black)
+    macdStatusText = macdLine > 0 ? "ABOVE ZERO" : "BELOW ZERO"
+    macdStatusColor = macdLine > 0 ? color.green : color.red
+    table.cell(ribbonTable, 1, 5, macdStatusText, text_color=macdStatusColor)
 
 //=====================================================================================================================
-// 🚨 ALERTS FOR RIBBON CHANGES
+// 🚨 ENHANCED ALERTS FOR E/C SIGNALS
 //=====================================================================================================================
+if finalEarlyLong
+    alert("⚡ EARLY LONG SIGNAL (E) - High probability setup detected", alert.freq_once_per_bar)
+
+if finalEarlyShort
+    alert("⚡ EARLY SHORT SIGNAL (E) - High probability setup detected", alert.freq_once_per_bar)
+
+if confirmedLongSignal
+    alert("✅ CONFIRMED LONG SIGNAL (C) - Entry confirmation received", alert.freq_once_per_bar)
+
+if confirmedShortSignal
+    alert("✅ CONFIRMED SHORT SIGNAL (C) - Entry confirmation received", alert.freq_once_per_bar)
+
 if bullishRibbon and not bullishRibbon[1]
     alert("🟢 EMA Ribbon turned BULLISH - All EMAs aligned upward", alert.freq_once_per_bar)
 
 if bearishRibbon and not bearishRibbon[1]
     alert("🔴 EMA Ribbon turned BEARISH - All EMAs aligned downward", alert.freq_once_per_bar)
 
-if ribbonStrengthOk and not ribbonStrengthOk[1]
-    alert("💪 EMA Ribbon strength STRONG - Minimum gap requirements met", alert.freq_once_per_bar)
 
 //=====================================================================================================================
 // 📋 USAGE INSTRUCTIONS
 //=====================================================================================================================
 // SETUP INSTRUCTIONS:
 // 1. Add this indicator to your chart (it will overlay on price)
-// 2. Add the main "EMA Ribbon MACD v1" strategy (it will create separate pane below)
-// 3. Configure both with matching EMA settings for consistent analysis
-// 4. Use ribbon fills for trend direction, strategy pane for entry/exit signals
+// 2. Configure EMA and MACD settings to match your strategy
+// 3. Enable E/C signals for enhanced entry timing
+// 4. Use alerts for automated signal notifications
+//
+// E/C SIGNAL GUIDE:
+// - "E" (Early) = Yellow/Orange triangles - High probability setups detected
+// - "C" (Confirmation) = Green/Red triangles - Consecutive early signals confirmed
+// - Signal suppression prevents overlapping entries in same direction
+// - Only resets on genuine direction change for automation safety
 //
 // VISUALIZATION GUIDE:
 // - GREEN fills = Bullish ribbon alignment
 // - RED fills = Bearish ribbon alignment  
 // - SMA lines = Longer-term context
-// - Strength signals = 💪 when ribbon gaps are sufficient
+// - E/C signals = Enhanced entry timing with overlap prevention
 //
-// COMPANION STRATEGY:
-// This indicator works best with the main EMA Ribbon MACD strategy
-// which provides MACD analysis and trade execution in separate pane
+// AUTOMATION READY:
+// This enhanced overlay prevents signal overlap issues seen in the original
+// Perfect for automated systems with E→C→Suppress→Reset cycle
 //=====================================================================================================================

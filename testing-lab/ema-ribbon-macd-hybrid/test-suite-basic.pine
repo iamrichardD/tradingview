@@ -1,4 +1,4 @@
-// EMA Ribbon + MACD Hybrid Strategy - Basic Test Suite v1.4.3
+// EMA Ribbon + MACD Hybrid Strategy - Basic Test Suite v1.5
 // Testing Lab Validation Framework for Multi-Layer Signal System with Signal Suppression
 //
 // License: MIT License - Educational/Experimental Use Only
@@ -10,7 +10,7 @@
 //
 //@version=6
 
-strategy("EMA Ribbon Test Suite v1.4.3", "RIBBON_TESTS_v143", overlay=false, 
+strategy("EMA Ribbon Test Suite v1.5", "RIB_TESTS", overlay=false, 
          default_qty_type=strategy.percent_of_equity, default_qty_value=1,
          max_bars_back=500, calc_on_every_tick=false)
 
@@ -80,9 +80,6 @@ maxDailyTrades = 10
 // 🔧 TEST UTILITY FUNCTIONS
 //=====================================================================================================================
 addTest(string testName, bool condition, string description, float expectedVal = na, float actualVal = na, string category = "General", string severity = "Medium") =>
-    totalTests += 1
-    if condition
-        passedTests += 1
     testResult = TestResult.new(testName, condition, description, expectedVal, actualVal, category, severity)
     array.push(testResults, testResult)
 
@@ -126,10 +123,11 @@ longTermBearish = sma50 < sma200 and close < sma50
 //=====================================================================================================================
 // 🧪 CATEGORY 1: EMA RIBBON SYSTEM TESTS (8 TESTS)
 //=====================================================================================================================
+manualFastEma = ta.ema(close, 8)
+
 if barstate.islastconfirmedhistory
 
     // Test 1: EMA Calculation Accuracy
-    manualFastEma = ta.ema(close, 8)
     addTest("EMA Fast Calculation", 
              isClose(fastEma, manualFastEma),
              "Fast EMA (8) should match manual calculation",
@@ -195,6 +193,8 @@ if barstate.islastconfirmedhistory
 
     // Test 10: MACD Line Calculation
     [testMacdLine, testSignalLine, testHistogram] = ta.macd(close, 8, 21, 5)
+
+if barstate.islastconfirmedhistory
     addTest("MACD Line Accuracy",
              isClose(macdLine, testMacdLine),
              "MACD line should match ta.macd calculation",
@@ -240,6 +240,9 @@ if barstate.islastconfirmedhistory
 //=====================================================================================================================
 // 🧪 CATEGORY 3: SMA CONTEXT TESTS (5 TESTS)
 //=====================================================================================================================
+testSma50 = ta.sma(close, 50)
+testSma200 = ta.sma(close, 200)
+
 if barstate.islastconfirmedhistory
 
     // Test 16: SMA Length Validation
@@ -249,18 +252,21 @@ if barstate.islastconfirmedhistory
              1, (sma50Len < sma100Len and sma100Len < sma200Len) ? 1 : 0, TEST_SMA, CRITICAL)
 
     // Test 17: SMA 50 Calculation
-    testSma50 = ta.sma(close, 50)
     addTest("SMA 50 Calculation",
              isClose(sma50, testSma50),
              "SMA 50 should match ta.sma calculation", 
              testSma50, sma50, TEST_SMA, CRITICAL)
 
     // Test 18: SMA 200 Calculation
-    testSma200 = ta.sma(close, 200)
     addTest("SMA 200 Calculation",
              isClose(sma200, testSma200),
              "SMA 200 should match ta.sma calculation",
              testSma200, sma200, TEST_SMA, CRITICAL)
+
+//=====================================================================================================================
+// 🧪 CATEGORY 3: SMA CONTEXT TESTS (5 TESTS)
+//=====================================================================================================================
+if barstate.islastconfirmedhistory
 
     // Test 19: Long-term Bullish Context
     expectedLongBull = sma50 > sma200 and close > sma50
@@ -477,6 +483,15 @@ if barstate.islastconfirmedhistory
 // 📊 TEST RESULTS DISPLAY
 //=====================================================================================================================
 if barstate.islast
+    // Calculate totalTests and passedTests by iterating through testResults
+    totalTests := 0
+    passedTests := 0
+    for i = 0 to array.size(testResults) - 1
+        test = array.get(testResults, i)
+        totalTests += 1
+        if test.passed
+            passedTests += 1
+
     // Calculate pass rate
     passRate = totalTests > 0 ? passedTests / totalTests * 100 : 0
     
@@ -578,5 +593,5 @@ else if barstate.islast and passRate < 75
 // Total: 46 comprehensive tests (was 34 in v1.1)
 // Target: ≥90% pass rate for testing lab graduation
 // Quality Gate: Critical tests must pass 100%
-// v1.4.3 Focus: Signal suppression and automation safety validation
+// v1.5 Focus: Signal suppression and automation safety validation
 //=====================================================================================================================
