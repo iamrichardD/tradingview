@@ -8,17 +8,52 @@ This is a TradingView trading strategies repository focused on Pine Script v6 de
 
 ## Core Commands
 
-### Testing Commands
+### Development Workflow Commands
 ```bash
-# No build/compile commands - Pine Script strategies are deployed directly on TradingView platform
-# Testing is performed through TradingView's built-in backtesting engine
-# All validation is done through Pine Script test suites within the strategy files
+# Project Navigation
+cd /home/rdelgado/Development/tradingview/testing-lab/ema-ribbon-macd-hybrid/  # Active development
+cd /home/rdelgado/Development/tradingview/4h-swing-trading/                    # Production strategies
+cd /home/rdelgado/Development/tradingview/5m-scalping-strategy/                # Production strategies
+
+# File Management
+cp strategy-v1.pine strategy-v2.pine                                          # Version control
+git add . && git commit -m "feat: implement new feature"                      # Version tracking
+git status && git diff                                                        # Check changes
+
+# Code Review Workflow (with Gemini integration)
+# 1. Develop strategy using Claude guidance
+# 2. Review code using GEMINI.md checklists 
+# 3. Validate Pine Script v6 compliance
+# 4. Ensure ≥90% test pass rate before deployment
+```
+
+### Testing & Validation Commands
+```bash
+# Pine Script Validation (TradingView Platform)
+# 1. Copy Pine Script code to TradingView editor
+# 2. Compile and check for errors/warnings (must be zero)
+# 3. Run backtest on multiple timeframes and markets
+# 4. Validate test suites within strategy code
+# 5. Ensure all quality gates pass before production
+
+# Quality Assurance Checklist
+# - [ ] Zero Pine Script v6 compilation errors
+# - [ ] ≥90% test pass rate on both test suites
+# - [ ] Performance benchmarks met
+# - [ ] Risk management controls validated
+# - [ ] Documentation complete and professional
 ```
 
 ### Development Commands
-- **Strategy Deployment**: Copy Pine Script code to TradingView editor and apply to chart
-- **Testing**: Run test suites using the dual testing framework built into each strategy
-- **Validation**: Ensure ≥90% test pass rate before deployment
+- **Strategy Development**: Follow modular architecture pattern with Pine Script v6 compliance
+- **Code Review**: Use GEMINI.md guidelines for quality assurance and compliance validation (see GEMINI.md for detailed checklists)
+- **Testing**: Implement dual test suite framework (basic + enhanced) with ≥90% pass rate requirement
+- **Validation**: Ensure institutional-grade quality before production deployment
+
+### AI Collaboration Workflow
+- **Claude Role**: Strategy development, implementation, technical architecture
+- **Gemini Role**: Code review, quality assurance, Pine Script v6 compliance validation (see GEMINI.md)
+- **Integration**: Use both AIs collaboratively for institutional-grade development standards
 
 ## Architecture & Structure
 
@@ -33,7 +68,8 @@ The repository follows a **modular strategy architecture** with these key compon
 2. **Testing Lab** (`/testing-lab/`)
    - Experimental strategy development environment
    - Active development of ultra-fast scalping strategies and advanced signal systems
-   - Current projects: BTC 5M True Scalping, EMA Ribbon + MACD Hybrid
+   - **Active Projects**: EMA Ribbon + MACD Hybrid v1.1 (in development)
+   - **Completed Projects**: BTC 5M True Scalping v1.0 (graduation ready)
    - Paper trading only - graduation to main strategies after validation
 
 3. **Dual Testing Framework**
