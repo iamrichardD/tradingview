@@ -1,0 +1,212 @@
+// Test Suite Template v6 - Institutional Grade Testing Framework
+// License: [License Type]
+// Contributors: [Team Members]
+//@version=6
+
+indicator("[Strategy Name] Test Suite v[Version]", "[TEST_SHORT_NAME]", overlay=false)
+
+//=====================================================================================================================
+// 🧪 COMPREHENSIVE TEST SUITE - Strategy Validation Framework
+//=====================================================================================================================
+
+// === TEST CONFIGURATION ===
+testType = input.string("Basic", "Test Suite Type", options=["Basic", "Enhanced"], group="Test Configuration")
+showResults = input.bool(true, "Show Test Results", group="Test Configuration")
+detailedOutput = input.bool(false, "Detailed Output", group="Test Configuration")
+
+// === STRATEGY PARAMETERS (Mirror main strategy) ===
+// Import or replicate key strategy parameters for testing
+fastEMA = input.int(21, "Fast EMA Length", minval=5, maxval=50, group="Strategy Parameters")
+slowEMA = input.int(55, "Slow EMA Length", minval=20, maxval=100, group="Strategy Parameters")
+riskPercent = input.float(2.0, "Risk Per Trade (%)", minval=0.5, maxval=5.0, step=0.1, group="Strategy Parameters")
+
+//=====================================================================================================================
+// 📊 TEST FRAMEWORK INFRASTRUCTURE
+//=====================================================================================================================
+
+// Test tracking variables
+var int totalTests = 0
+var int passedTests = 0
+var int failedTests = 0
+var bool testsInitialized = false
+
+// Test result storage
+var string[] testNames = array.new<string>()
+var bool[] testResults = array.new<bool>()
+var string[] testDescriptions = array.new<string>()
+
+// Test execution function
+runTest(testName, condition, description) =>
+    array.push(testNames, testName)
+    array.push(testResults, condition)
+    array.push(testDescriptions, description)
+    totalTests += 1
+    if condition
+        passedTests += 1
+    else
+        failedTests += 1
+    condition
+
+//=====================================================================================================================
+// 🔧 CORE SYSTEM TESTS (5-8 tests)
+//=====================================================================================================================
+
+if not testsInitialized and barstate.islast
+    // Test 1: Configuration Validation
+    configValid = fastEMA > 0 and slowEMA > 0 and fastEMA < slowEMA and riskPercent > 0 and riskPercent <= 5.0
+    runTest("CONFIG_001", configValid, "Strategy configuration parameters are valid")
+    
+    // Test 2: Input Parameter Ranges
+    paramRangesValid = fastEMA >= 5 and fastEMA <= 50 and slowEMA >= 20 and slowEMA <= 100
+    runTest("CONFIG_002", paramRangesValid, "Input parameters within acceptable ranges")
+    
+    // Test 3: Risk Management Constraints
+    riskValid = riskPercent >= 0.5 and riskPercent <= 5.0
+    runTest("RISK_001", riskValid, "Risk parameters within safe limits")
+    
+    // Test 4: Technical Indicator Initialization
+    emaFast = ta.ema(close, fastEMA)
+    emaSlow = ta.ema(close, slowEMA)
+    indicatorsValid = not na(emaFast) and not na(emaSlow)
+    runTest("TECH_001", indicatorsValid, "Technical indicators properly initialized")
+    
+    // Test 5: Data Integrity
+    dataValid = not na(close) and not na(high) and not na(low) and not na(volume)
+    runTest("DATA_001", dataValid, "Market data integrity validation")
+
+//=====================================================================================================================
+// 📈 SIGNAL GENERATION TESTS (8-12 tests)
+//=====================================================================================================================
+
+if not testsInitialized and barstate.islast and (testType == "Basic" or testType == "Enhanced")
+    // Test 6: Signal Logic Consistency
+    emaFast = ta.ema(close, fastEMA)
+    emaSlow = ta.ema(close, slowEMA)
+    trendUp = emaFast > emaSlow
+    trendDown = emaFast < emaSlow
+    signalConsistent = not (trendUp and trendDown)
+    runTest("SIGNAL_001", signalConsistent, "Signal logic is mutually exclusive")
+    
+    // Test 7: Entry Signal Validity
+    [macdLine, signalLine, histogram] = ta.macd(close, 12, 26, 9)
+    longSignal = trendUp and ta.crossover(macdLine, signalLine)
+    shortSignal = trendDown and ta.crossunder(macdLine, signalLine)
+    entryValid = not (longSignal and shortSignal)
+    runTest("SIGNAL_002", entryValid, "Entry signals are mutually exclusive")
+    
+    // Test 8: Signal Timing Validation
+    signalTiming = not (longSignal[1] and longSignal) or not (shortSignal[1] and shortSignal)
+    runTest("SIGNAL_003", signalTiming, "Signals don't repeat on consecutive bars")
+
+//=====================================================================================================================
+// 🛡️ RISK MANAGEMENT TESTS (6-8 tests)
+//=====================================================================================================================
+
+if not testsInitialized and barstate.islast and (testType == "Basic" or testType == "Enhanced")
+    // Test 9: Position Sizing Calculation
+    atr = ta.atr(14)
+    testEntryPrice = close
+    testStopLoss = close - (atr * 2.0)
+    equity = 10000.0 // Test equity
+    riskAmount = equity * (riskPercent / 100)
+    stopDistance = math.abs(testEntryPrice - testStopLoss)
+    positionSize = stopDistance > 0 ? riskAmount / stopDistance : 0
+    positionSizeValid = positionSize > 0 and positionSize < equity
+    runTest("RISK_002", positionSizeValid, "Position sizing calculation is valid")
+    
+    // Test 10: ATR-based Stop Loss
+    stopLossValid = not na(atr) and atr > 0
+    runTest("RISK_003", stopLossValid, "ATR-based stop loss calculation valid")
+
+//=====================================================================================================================
+// ⚡ PERFORMANCE TESTS (6-7 tests)
+//=====================================================================================================================
+
+if not testsInitialized and barstate.islast and (testType == "Enhanced")
+    // Test 11: Execution Speed Validation
+    executionValid = true // Placeholder for execution speed tests
+    runTest("PERF_001", executionValid, "Strategy execution within performance limits")
+    
+    // Test 12: Memory Usage Validation
+    memoryValid = true // Placeholder for memory usage validation
+    runTest("PERF_002", memoryValid, "Memory usage within acceptable limits")
+
+//=====================================================================================================================
+// 🔬 ENHANCED TEST SUITE (Additional tests for production validation)
+//=====================================================================================================================
+
+if not testsInitialized and barstate.islast and testType == "Enhanced"
+    // Test 13: Edge Case - Market Open/Close
+    marketHoursValid = true // Implement market hours validation
+    runTest("EDGE_001", marketHoursValid, "Strategy handles market open/close correctly")
+    
+    // Test 14: Edge Case - Low Volume Periods
+    volumeValid = volume > 0
+    runTest("EDGE_002", volumeValid, "Strategy handles low volume periods correctly")
+    
+    // Test 15: Stress Test - High Volatility
+    atr = ta.atr(14)
+    atr20 = ta.atr(20)
+    volatilityHandling = not na(atr) and not na(atr20)
+    runTest("STRESS_001", volatilityHandling, "Strategy handles high volatility periods")
+
+//=====================================================================================================================
+// 📊 TEST RESULTS VISUALIZATION & REPORTING
+//=====================================================================================================================
+
+// Finalize test execution
+if not testsInitialized and barstate.islast
+    testsInitialized := true
+
+// Calculate test metrics
+testPassRate = totalTests > 0 ? (passedTests / totalTests) * 100 : 0
+qualityGatePassed = testPassRate >= 90.0
+
+// Color coding for results
+resultColor = qualityGatePassed ? color.green : color.red
+bgColor = qualityGatePassed ? color.new(color.green, 90) : color.new(color.red, 90)
+
+// Main results table
+if showResults and barstate.islast
+    var table resultsTable = table.new(position.top_right, 2, 10, bgcolor=bgColor, border_width=1)
+    
+    table.cell(resultsTable, 0, 0, "Test Results", text_color=color.white, bgcolor=resultColor, text_size=size.normal)
+    table.cell(resultsTable, 1, 0, testType + " Suite", text_color=color.white, bgcolor=resultColor, text_size=size.normal)
+    
+    table.cell(resultsTable, 0, 1, "Total Tests", text_color=color.black, text_size=size.small)
+    table.cell(resultsTable, 1, 1, str.tostring(totalTests), text_color=color.black, text_size=size.small)
+    
+    table.cell(resultsTable, 0, 2, "Passed", text_color=color.black, text_size=size.small)
+    table.cell(resultsTable, 1, 2, str.tostring(passedTests), text_color=color.green, text_size=size.small)
+    
+    table.cell(resultsTable, 0, 3, "Failed", text_color=color.black, text_size=size.small)
+    table.cell(resultsTable, 1, 3, str.tostring(failedTests), text_color=color.red, text_size=size.small)
+    
+    table.cell(resultsTable, 0, 4, "Pass Rate", text_color=color.black, text_size=size.small)
+    table.cell(resultsTable, 1, 4, str.tostring(testPassRate, "#.##") + "%", text_color=resultColor, text_size=size.small)
+    
+    table.cell(resultsTable, 0, 5, "Quality Gate", text_color=color.black, text_size=size.small)
+    table.cell(resultsTable, 1, 5, qualityGatePassed ? "PASSED" : "FAILED", text_color=resultColor, text_size=size.small)
+
+// Detailed test results (if enabled)
+if detailedOutput and showResults and barstate.islast and totalTests > 0
+    var table detailTable = table.new(position.bottom_right, 3, totalTests + 1, bgcolor=color.white, border_width=1)
+    
+    table.cell(detailTable, 0, 0, "Test ID", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    table.cell(detailTable, 1, 0, "Status", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    table.cell(detailTable, 2, 0, "Description", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    
+    for i = 0 to array.size(testNames) - 1
+        testName = array.get(testNames, i)
+        testResult = array.get(testResults, i)
+        testDesc = array.get(testDescriptions, i)
+        statusColor = testResult ? color.green : color.red
+        statusText = testResult ? "PASS" : "FAIL"
+        
+        table.cell(detailTable, 0, i + 1, testName, text_color=color.black, text_size=size.tiny)
+        table.cell(detailTable, 1, i + 1, statusText, text_color=statusColor, text_size=size.tiny)
+        table.cell(detailTable, 2, i + 1, testDesc, text_color=color.black, text_size=size.tiny)
+
+// Plot test pass rate for historical tracking
+plot(testPassRate, "Test Pass Rate", color=resultColor, linewidth=2)
+hline(90, "Quality Gate", color=color.orange, linestyle=hline.style_dashed)

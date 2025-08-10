@@ -1,0 +1,145 @@
+// Strategy Template v6 - Institutional Grade
+// License: [License Type]
+// Contributors: [Team Members]
+//@version=6
+
+strategy("[Strategy Name] v[Version]", "[SHORT_NAME]", 
+         overlay=true, default_qty_type=strategy.percent_of_equity, 
+         default_qty_value=5, commission_type=strategy.commission.percent, 
+         commission_value=0.075, slippage=2, calc_on_every_tick=false)
+
+//=====================================================================================================================
+// 📊 STRATEGY CONFIGURATION - Input Parameters & Settings
+//=====================================================================================================================
+
+// === TRADING PARAMETERS ===
+// Group input parameters by functionality with descriptive tooltips
+longEntry = input.bool(true, "Enable Long Entries", group="Trading Direction")
+shortEntry = input.bool(true, "Enable Short Entries", group="Trading Direction")
+
+// === TECHNICAL INDICATORS ===
+fastEMA = input.int(21, "Fast EMA Length", minval=5, maxval=50, group="Technical Indicators")
+slowEMA = input.int(55, "Slow EMA Length", minval=20, maxval=100, group="Technical Indicators")
+macdFast = input.int(12, "MACD Fast Length", minval=5, maxval=50, group="MACD Settings")
+macdSlow = input.int(26, "MACD Slow Length", minval=20, maxval=100, group="MACD Settings")
+macdSignal = input.int(9, "MACD Signal Length", minval=5, maxval=20, group="MACD Settings")
+
+// === RISK MANAGEMENT ===
+riskPercent = input.float(2.0, "Risk Per Trade (%)", minval=0.5, maxval=5.0, step=0.1, group="Risk Management")
+atrMultiplier = input.float(2.0, "ATR Stop Multiplier", minval=1.0, maxval=5.0, step=0.1, group="Risk Management")
+atrLength = input.int(14, "ATR Length", minval=5, maxval=50, group="Risk Management")
+
+//=====================================================================================================================
+// 🔧 TECHNICAL INDICATORS & CALCULATIONS - All Technical Analysis
+//=====================================================================================================================
+
+// Pre-calculate all ta.* and math.* functions outside conditionals
+emaFast = ta.ema(close, fastEMA)
+emaSlow = ta.ema(close, slowEMA)
+[macdLine, signalLine, histogram] = ta.macd(close, macdFast, macdSlow, macdSignal)
+atr = ta.atr(atrLength)
+
+// Trend determination
+trendUp = emaFast > emaSlow
+trendDown = emaFast < emaSlow
+
+//=====================================================================================================================
+// 📈 SIGNAL LOGIC - Entry/Exit Signal Generation
+//=====================================================================================================================
+
+// Long entry conditions
+longSignal = longEntry and trendUp and ta.crossover(macdLine, signalLine) and histogram > 0
+
+// Short entry conditions  
+shortSignal = shortEntry and trendDown and ta.crossunder(macdLine, signalLine) and histogram < 0
+
+// Exit conditions
+longExit = ta.crossunder(macdLine, signalLine) or not trendUp
+shortExit = ta.crossover(macdLine, signalLine) or not trendDown
+
+//=====================================================================================================================
+// 🛡️ RISK MANAGEMENT - Position Sizing & Risk Controls
+//=====================================================================================================================
+
+// ATR-based position sizing
+calculatePositionSize(entryPrice, stopLoss, riskPct) =>
+    if na(entryPrice) or na(stopLoss) or riskPct <= 0
+        0.0
+    else
+        equity = strategy.equity
+        riskAmount = equity * (riskPct / 100)
+        stopDistance = math.abs(entryPrice - stopLoss)
+        positionSize = riskAmount / stopDistance
+        math.max(positionSize, 1.0)
+
+// Dynamic stop levels
+longStopLoss = close - (atr * atrMultiplier)
+shortStopLoss = close + (atr * atrMultiplier)
+
+//=====================================================================================================================
+// ⚡ STRATEGY EXECUTION - Trade Management Logic
+//=====================================================================================================================
+
+// Entry execution with validation
+if longSignal and strategy.position_size == 0
+    posSize = calculatePositionSize(close, longStopLoss, riskPercent)
+    strategy.entry("Long", strategy.long, qty=posSize)
+    strategy.exit("Long Exit", "Long", stop=longStopLoss)
+
+if shortSignal and strategy.position_size == 0
+    posSize = calculatePositionSize(close, shortStopLoss, riskPercent)
+    strategy.entry("Short", strategy.short, qty=posSize)
+    strategy.exit("Short Exit", "Short", stop=shortStopLoss)
+
+// Exit execution
+if longExit and strategy.position_size > 0
+    strategy.close("Long", comment="Signal Exit")
+
+if shortExit and strategy.position_size < 0
+    strategy.close("Short", comment="Signal Exit")
+
+//=====================================================================================================================
+// 🧪 TESTING FRAMEWORK - Dual Test Suite Implementation
+//=====================================================================================================================
+
+// Basic validation tests (implement comprehensive test suite)
+var int testsPassed = 0
+var int testsTotal = 0
+
+// Test 1: Configuration Validation
+testConfigValid = fastEMA < slowEMA and riskPercent > 0 and riskPercent <= 5.0
+if barstate.islast
+    testsTotal += 1
+    if testConfigValid
+        testsPassed += 1
+
+// Test 2: Signal Validity
+testSignalValid = not (longSignal and shortSignal)
+if barstate.islast
+    testsTotal += 1
+    if testSignalValid
+        testsPassed += 1
+
+// Add more tests as needed...
+
+//=====================================================================================================================
+// 📊 VISUALIZATION & MONITORING - Charts, Alerts & Analytics
+//=====================================================================================================================
+
+// Plot key levels and signals
+plot(emaFast, "Fast EMA", color=color.blue, linewidth=1)
+plot(emaSlow, "Slow EMA", color=color.red, linewidth=1)
+
+// Signal visualization
+plotshape(longSignal, "Long Signal", shape.triangleup, location.belowbar, color.green, size=size.small)
+plotshape(shortSignal, "Short Signal", shape.triangledown, location.abovebar, color.red, size=size.small)
+
+// Performance monitoring
+if barstate.islast
+    testPassRate = testsTotal > 0 ? (testsPassed / testsTotal) * 100 : 0
+    label.new(bar_index, high, "Test Pass Rate: " + str.tostring(testPassRate, "#.##") + "%", 
+              style=label.style_label_down, color=testPassRate >= 90 ? color.green : color.red)
+
+// Alerts
+alertcondition(longSignal, "Long Entry Signal", "Long entry signal generated")
+alertcondition(shortSignal, "Short Entry Signal", "Short entry signal generated")
