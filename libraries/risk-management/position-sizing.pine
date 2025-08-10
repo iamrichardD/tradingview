@@ -1,0 +1,218 @@
+// Position Sizing Library v6 - ATR-Based Dynamic Position Sizing
+// License: MIT
+// Contributors: TradingView Strategy Development Team
+//@version=6
+
+library("PositionSizing", overlay=true)
+
+//=====================================================================================================================
+// 🛡️ POSITION SIZING & RISK MANAGEMENT LIBRARY
+//=====================================================================================================================
+
+// === CORE POSITION SIZING FUNCTIONS ===
+
+// ATR-based position sizing calculation
+// @function Calculate position size based on ATR and risk parameters
+// @param entryPrice (float) The intended entry price
+// @param stopLoss (float) The stop loss level  
+// @param riskPercent (float) Risk percentage per trade (1-5%)
+// @param equity (float) Account equity
+// @returns (float) Calculated position size
+export calculatePositionSize(float entryPrice, float stopLoss, float riskPercent, float equity) =>
+    if na(entryPrice) or na(stopLoss) or riskPercent <= 0 or equity <= 0
+        0.0
+    else
+        stopDistance = math.abs(entryPrice - stopLoss)
+        if stopDistance <= 0
+            0.0
+        else
+            riskAmount = equity * (riskPercent / 100)
+            positionSize = riskAmount / stopDistance
+            math.max(positionSize, 1.0)
+
+// Dynamic position sizing with volatility adjustment
+// @function Calculate position size with volatility regime adjustment
+// @param entryPrice (float) The intended entry price
+// @param atr (float) Current ATR value
+// @param atrMultiplier (float) ATR multiplier for stop distance
+// @param riskPercent (float) Base risk percentage
+// @param equity (float) Account equity
+// @param volatilityRegime (string) Current volatility regime ("low", "normal", "high")
+// @returns (float) Volatility-adjusted position size
+export calculateDynamicPositionSize(float entryPrice, float atr, float atrMultiplier, float riskPercent, float equity, string volatilityRegime) =>
+    if na(entryPrice) or na(atr) or atr <= 0 or riskPercent <= 0 or equity <= 0
+        0.0
+    else
+        // Adjust risk based on volatility regime
+        adjustedRisk = switch volatilityRegime
+            "low" => riskPercent * 1.2    // Increase risk in low volatility
+            "high" => riskPercent * 0.8   // Decrease risk in high volatility  
+            => riskPercent                // Normal risk in normal volatility
+            
+        stopDistance = atr * atrMultiplier
+        riskAmount = equity * (adjustedRisk / 100)
+        positionSize = riskAmount / stopDistance
+        math.max(positionSize, 1.0)
+
+// === RISK VALIDATION FUNCTIONS ===
+
+// Risk limits validation type
+export type RiskLimits
+    float maxRiskPerTrade     // Maximum risk per individual trade (%)
+    float maxDailyRisk        // Maximum daily risk exposure (%)
+    float maxWeeklyRisk       // Maximum weekly risk exposure (%)
+    float maxDrawdown         // Maximum acceptable drawdown (%)
+    int maxDailyTrades        // Maximum number of trades per day
+    int maxOpenPositions      // Maximum concurrent open positions
+
+// Validate risk limits are within acceptable ranges
+// @function Validate that risk parameters are within safe institutional limits
+// @param limits (RiskLimits) Risk limits structure to validate
+// @returns (bool) True if all limits are within acceptable ranges
+export validateRiskLimits(RiskLimits limits) =>
+    limits.maxRiskPerTrade > 0 and limits.maxRiskPerTrade <= 5.0 and
+    limits.maxDailyRisk > 0 and limits.maxDailyRisk <= 15.0 and
+    limits.maxWeeklyRisk > 0 and limits.maxWeeklyRisk <= 30.0 and
+    limits.maxDrawdown > 0 and limits.maxDrawdown <= 25.0 and
+    limits.maxDailyTrades > 0 and limits.maxDailyTrades <= 50 and
+    limits.maxOpenPositions > 0 and limits.maxOpenPositions <= 10
+
+// Check if trade risk is acceptable
+// @function Validate individual trade risk against limits
+// @param positionSize (float) Calculated position size
+// @param entryPrice (float) Entry price
+// @param stopLoss (float) Stop loss level
+// @param equity (float) Account equity
+// @param limits (RiskLimits) Risk limits to check against
+// @returns (bool) True if trade risk is acceptable
+export validateTradeRisk(float positionSize, float entryPrice, float stopLoss, float equity, RiskLimits limits) =>
+    if positionSize <= 0 or equity <= 0
+        false
+    else
+        stopDistance = math.abs(entryPrice - stopLoss)
+        riskAmount = positionSize * stopDistance
+        riskPercent = (riskAmount / equity) * 100
+        riskPercent <= limits.maxRiskPerTrade
+
+// === PORTFOLIO HEAT MONITORING ===
+
+// Portfolio heat monitoring type
+export type PortfolioHeat
+    float currentRisk         // Current portfolio risk exposure (%)
+    float dailyRisk          // Today's accumulated risk (%)
+    float weeklyRisk         // This week's accumulated risk (%)
+    int openPositions        // Number of open positions
+    int dailyTrades          // Number of trades today
+    float maxCorrelation     // Maximum correlation between open positions
+
+// Calculate current portfolio heat
+// @function Calculate real-time portfolio risk exposure
+// @param openPositions (array<float>) Array of open position sizes
+// @param correlationMatrix (array<float>) Correlation coefficients between positions
+// @param equity (float) Account equity
+// @returns (PortfolioHeat) Portfolio heat metrics
+export calculatePortfolioHeat(array<float> openPositions, array<float> correlationMatrix, float equity) =>
+    if array.size(openPositions) == 0 or equity <= 0
+        PortfolioHeat.new(0.0, 0.0, 0.0, 0, 0, 0.0)
+    else
+        totalExposure = 0.0
+        maxCorr = 0.0
+        
+        // Calculate total exposure
+        for i = 0 to array.size(openPositions) - 1
+            totalExposure += array.get(openPositions, i)
+        
+        // Find maximum correlation
+        if array.size(correlationMatrix) > 0
+            for i = 0 to array.size(correlationMatrix) - 1
+                corr = math.abs(array.get(correlationMatrix, i))
+                if corr > maxCorr
+                    maxCorr := corr
+        
+        currentRisk = (totalExposure / equity) * 100
+        PortfolioHeat.new(currentRisk, 0.0, 0.0, array.size(openPositions), 0, maxCorr)
+
+// === EMERGENCY STOP PROCEDURES ===
+
+// Emergency stop conditions type
+export type EmergencyStop
+    bool enabled              // Emergency stop system enabled
+    float maxDrawdownTrigger  // Drawdown % that triggers emergency stop
+    float maxDailyLossTrigger // Daily loss % that triggers emergency stop
+    int maxConsecutiveLosses  // Consecutive losses that trigger emergency stop
+    bool systemHalted         // Current system halt status
+
+// Check emergency stop conditions
+// @function Monitor emergency stop triggers and halt trading if needed
+// @param currentDrawdown (float) Current drawdown percentage
+// @param dailyPnL (float) Today's P&L percentage
+// @param consecutiveLosses (int) Number of consecutive losing trades
+// @param emergencyStop (EmergencyStop) Emergency stop configuration
+// @returns (bool) True if trading should be halted
+export checkEmergencyStop(float currentDrawdown, float dailyPnL, int consecutiveLosses, EmergencyStop emergencyStop) =>
+    if not emergencyStop.enabled
+        false
+    else
+        drawdownExceeded = currentDrawdown >= emergencyStop.maxDrawdownTrigger
+        dailyLossExceeded = dailyPnL <= (-1 * emergencyStop.maxDailyLossTrigger)
+        consecutiveLossesExceeded = consecutiveLosses >= emergencyStop.maxConsecutiveLosses
+        
+        drawdownExceeded or dailyLossExceeded or consecutiveLossesExceeded
+
+// === UTILITY FUNCTIONS ===
+
+// Convert position size to contract/share quantity
+// @function Convert position size to actual trading quantity
+// @param positionSize (float) Position size in base currency
+// @param contractSize (float) Size of one contract/lot
+// @param tickValue (float) Value per tick movement
+// @returns (float) Number of contracts/shares to trade
+export positionSizeToQuantity(float positionSize, float contractSize, float tickValue) =>
+    if contractSize <= 0 or tickValue <= 0
+        0.0
+    else
+        quantity = positionSize / (contractSize * tickValue)
+        math.max(math.round(quantity), 1.0)
+
+// Calculate maximum position size based on liquidity
+// @function Calculate maximum position size based on market liquidity
+// @param avgVolume (float) Average daily volume
+// @param maxVolumePercent (float) Maximum percentage of volume to trade
+// @param price (float) Current price
+// @returns (float) Maximum position size based on liquidity
+export calculateMaxPositionByLiquidity(float avgVolume, float maxVolumePercent, float price) =>
+    if avgVolume <= 0 or price <= 0 or maxVolumePercent <= 0
+        0.0
+    else
+        maxShares = avgVolume * (maxVolumePercent / 100)
+        maxPositionSize = maxShares * price
+        maxPositionSize
+
+//=====================================================================================================================
+// 📊 EXAMPLE USAGE & TESTING
+//=====================================================================================================================
+
+// Example implementation of the position sizing system
+if barstate.islast
+    // Example: Calculate position size for a trade
+    exampleEntry = close
+    exampleAtr = ta.atr(14)
+    exampleStop = exampleEntry - (exampleAtr * 2.0)
+    exampleEquity = 100000.0
+    exampleRisk = 2.0
+    
+    // Calculate position size
+    posSize = calculatePositionSize(exampleEntry, exampleStop, exampleRisk, exampleEquity)
+    
+    // Validate risk limits
+    riskLimits = RiskLimits.new(3.0, 10.0, 20.0, 15.0, 10, 5)
+    isValidRisk = validateRiskLimits(riskLimits)
+    isValidTrade = validateTradeRisk(posSize, exampleEntry, exampleStop, exampleEquity, riskLimits)
+    
+    // Display results
+    label.new(bar_index, high, 
+              "Position Size: " + str.tostring(posSize, "#.##") + "\n" +
+              "Risk Valid: " + str.tostring(isValidRisk) + "\n" +
+              "Trade Valid: " + str.tostring(isValidTrade),
+              style=label.style_label_down, 
+              color=isValidTrade ? color.green : color.red)

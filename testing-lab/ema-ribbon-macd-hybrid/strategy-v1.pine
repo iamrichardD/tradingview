@@ -14,11 +14,11 @@
 //
 //@version=6
 
-strategy("EMA Ribbon MACD v1", "RIBBON_v1", overlay=false,
-         default_qty_type=strategy.percent_of_equity, default_qty_value=2,
-         commission_type=strategy.commission.percent, commission_value=0.05,
-         slippage=1, calc_on_every_tick=true, calc_on_order_fills=true,
-         max_bars_back=200, process_orders_on_close=false, scale=scale.right)
+strategy("EMA Ribbon MACD v1", "RIBBON_v1", overlay = false,
+         default_qty_type = strategy.percent_of_equity, default_qty_value = 2,
+         commission_type = strategy.commission.percent, commission_value = 0.1,
+         slippage = 2, calc_on_every_tick = false, calc_on_order_fills = false,
+         max_bars_back = 200, process_orders_on_close = false, scale = scale.right)
 
 //=====================================================================================================================
 // 🚧 EXPERIMENTAL WARNING
@@ -31,122 +31,229 @@ strategy("EMA Ribbon MACD v1", "RIBBON_v1", overlay=false,
 // 🛡️ RISK MANAGEMENT - PRIORITY 1 (ESSENTIAL)
 //=====================================================================================================================
 grpRisk = "🛡️ Risk Management"
-stopLossPercent = input.float(1.5, "Stop Loss %", minval=0.5, maxval=3.0, step=0.1, group=grpRisk)
-takeProfitPercent = input.float(2.5, "Take Profit %", minval=1.0, maxval=4.0, step=0.1, group=grpRisk)
-maxDailyTrades = input.int(10, "Max Daily Trades", minval=3, maxval=50, group=grpRisk)
+stopLossPercent = input.float(1.5, "Stop Loss %", minval = 0.5, maxval = 3.0, step = 0.1, group = grpRisk)
+takeProfitPercent = input.float(2.5, "Take Profit %", minval = 1.0, maxval = 4.0, step = 0.1, group = grpRisk)
+maxDailyTrades = input.int(10, "Max Daily Trades", minval = 3, maxval = 50, group = grpRisk)
+
+// ✅ Enhanced Risk Management - Realistic Trading Constraints
+maxDrawdownPercent = input.float(15.0, "Max Drawdown Alert %", minval = 5.0, maxval = 25.0, step = 1.0, group = grpRisk,
+     tooltip = "Alert when drawdown exceeds this level")
+riskPerTrade = input.float(1.0, "Risk Per Trade %", minval = 0.1, maxval = 3.0, step = 0.1, group = grpRisk,
+     tooltip = "Maximum account risk per trade")
+minTradeGap = input.int(3, "Minimum Bars Between Trades", minval = 1, maxval = 10, group = grpRisk,
+     tooltip = "Prevent overtrading")
+
+// ✅ Global variables for performance validation (accessible across all if barstate.islast blocks)
+var int totalRedFlags = 0
+var string performanceStatus = "✅ REALISTIC"
 
 //=====================================================================================================================
 // 📊 EMA RIBBON CONFIGURATION - PRIORITY 1 (ESSENTIAL)
 //=====================================================================================================================
 grpRibbon = "📊 EMA Ribbon System"
-fastEmaLen = input.int(8, "Fast EMA Length", minval=5, maxval=15, group=grpRibbon, tooltip="Primary trend EMA")
-pivotEmaLen = input.int(21, "Pivot EMA Length", minval=15, maxval=30, group=grpRibbon, tooltip="Key support/resistance")
-slowEmaLen = input.int(34, "Slow EMA Length", minval=25, maxval=50, group=grpRibbon, tooltip="Long-term trend filter")
+fastEmaLen = input.int(8, "Fast EMA Length", minval = 5, maxval = 15, group = grpRibbon, tooltip = "Primary trend EMA")
+pivotEmaLen = input.int(21, "Pivot EMA Length", minval = 15, maxval = 30, group = grpRibbon,
+     tooltip = "Key support/resistance")
+slowEmaLen = input.int(34, "Slow EMA Length", minval = 25, maxval = 50, group = grpRibbon,
+     tooltip = "Long-term trend filter")
 
 //=====================================================================================================================
 // 🌊 MACD MOMENTUM SYSTEM - PRIORITY 1 (ESSENTIAL)
 //=====================================================================================================================
 grpMACD = "🌊 MACD Momentum"
-macdFast = input.int(8, "MACD Fast", minval=6, maxval=15, group=grpMACD, tooltip="Proven 8,21,5 system")
-macdSlow = input.int(21, "MACD Slow", minval=15, maxval=35, group=grpMACD)
-macdSignal = input.int(5, "MACD Signal", minval=3, maxval=15, group=grpMACD)
+macdFast = input.int(8, "MACD Fast", minval = 6, maxval = 15, group = grpMACD, tooltip = "Proven 8,21,5 system")
+macdSlow = input.int(21, "MACD Slow", minval = 15, maxval = 35, group = grpMACD)
+macdSignal = input.int(5, "MACD Signal", minval = 3, maxval = 15, group = grpMACD)
 
 //=====================================================================================================================
 // 🎯 MACD SIGNALS - PRIORITY 2 (STRATEGY TUNING)
 //=====================================================================================================================
 grpSignals = "🎯 MACD Signals"
-useZeroCross = input.bool(true, "MACD Zero Cross", group=grpSignals)
-useSignalCross = input.bool(true, "MACD Signal Cross", group=grpSignals)
-useMomentumSignals = input.bool(false, "Early Momentum", group=grpSignals)
-momentumThreshold = input.float(0.2, "Momentum Threshold", minval=0.05, maxval=0.5, step=0.05, group=grpSignals)
+useZeroCross = input.bool(true, "MACD Zero Cross", group = grpSignals)
+useSignalCross = input.bool(true, "MACD Signal Cross", group = grpSignals)
+useMomentumSignals = input.bool(false, "Early Momentum", group = grpSignals)
+momentumThreshold = input.float(0.2, "Momentum Threshold", minval = 0.05, maxval = 0.5, step = 0.05, group = grpSignals)
 
 
 //=====================================================================================================================
 // 🔄 SIGNAL FILTERING - PRIORITY 2 (STRATEGY TUNING)
 //=====================================================================================================================
 grpFiltering = "🔄 Signal Filtering"
-useSignalCooldown = input.bool(true, "Enable Signal Cooldown", group=grpFiltering, tooltip="Prevent rapid-fire signals")
-earlyCooldownBars = input.int(1, "Early Signal Cooldown (bars)", minval=0, maxval=5, group=grpFiltering, tooltip="Cooldown for early signals - allows confirmation building")
-standardCooldownBars = input.int(5, "Standard Signal Cooldown (bars)", minval=1, maxval=20, group=grpFiltering, tooltip="Cooldown for confirmed/standard signals")
-allowConfirmationBypass = input.bool(true, "Allow Confirmation Bypass", group=grpFiltering, tooltip="Let confirmation system override cooldown restrictions")
-useSignalStrength = input.bool(true, "Enable Signal Strength Filter", group=grpFiltering, tooltip="Only allow signals when conditions are strong")
-preventRapidReversals = input.bool(true, "Prevent Rapid Reversals", group=grpFiltering, tooltip="Block opposite signals too quickly")
-marketStructureMode = input.string("Pivot EMA", "Market Structure Level", options=["Pivot EMA", "SMA 20"], group=grpFiltering, tooltip="Pivot EMA = EMA-aligned (default), SMA 20 = Conservative testing")
-useMarketStructureFilter = input.bool(true, "Enable Market Structure Filter", group=grpFiltering, tooltip="Require price above/below structure level for entries")
+useSignalCooldown = input.bool(true, "Enable Signal Cooldown", group = grpFiltering, 
+         tooltip = "Prevent rapid-fire signals")
+earlyCooldownBars = input.int(1, "Early Signal Cooldown (bars)", minval = 0, maxval = 5, 
+         group = grpFiltering, tooltip = "Cooldown for early signals - allows confirmation building")
+standardCooldownBars = input.int(5, "Standard Signal Cooldown (bars)", minval = 1, maxval = 20,
+         group = grpFiltering, tooltip = "Cooldown for confirmed/standard signals")
+allowConfirmationBypass = input.bool(true, "Allow Confirmation Bypass", group = grpFiltering,
+         tooltip = "Let confirmation system override cooldown restrictions")
+useSignalStrength = input.bool(true, "Enable Signal Strength Filter", group = grpFiltering,
+         tooltip = "Only allow signals when conditions are strong")
+preventRapidReversals = input.bool(true, "Prevent Rapid Reversals", group = grpFiltering,
+     tooltip = "Block opposite signals too quickly")
+marketStructureMode = input.string("Pivot EMA", "Market Structure Level", options = ["Pivot EMA", "SMA 20"],
+     group = grpFiltering, tooltip = "Pivot EMA = EMA-aligned (default), SMA 20 = Conservative testing")
+useMarketStructureFilter = input.bool(true, "Enable Market Structure Filter", group = grpFiltering,
+     tooltip = "Require price above/below structure level for entries")
 
 //=====================================================================================================================
 // ✅ SIGNAL CONFIRMATION SYSTEM - PRIORITY 2 (STRATEGY TUNING)
 //=====================================================================================================================
 grpConfirmation = "✅ Signal Confirmation System"
-useSignalConfirmation = input.bool(true, "Enable Signal Confirmation", group=grpConfirmation, tooltip="Upgrade consecutive early signals to standard status")
-confirmationWindow = input.int(5, "Confirmation Window (bars)", minval=1, maxval=10, group=grpConfirmation, tooltip="Time window for signal confirmation - wider window catches more patterns")
-upgradeConfirmedSignals = input.bool(true, "Upgrade Confirmed to Standard", group=grpConfirmation, tooltip="Show confirmed signals as standard (green/red) instead of early")
-requireSameDirection = input.bool(true, "Require Same Direction", group=grpConfirmation, tooltip="Only confirm signals in same direction")
+useSignalConfirmation = input.bool(true, "Enable Signal Confirmation", group = grpConfirmation,
+     tooltip = "Upgrade consecutive early signals to standard status")
+confirmationWindow = input.int(5, "Confirmation Window (bars)", minval = 1, maxval = 10, group = grpConfirmation,
+     tooltip = "Time window for signal confirmation - wider window catches more patterns")
+upgradeConfirmedSignals = input.bool(true, "Upgrade Confirmed to Standard", group = grpConfirmation,
+     tooltip = "Show confirmed signals as standard (green/red) instead of early")
+requireSameDirection = input.bool(true, "Require Same Direction", group = grpConfirmation,
+     tooltip = "Only confirm signals in same direction")
 
 // Early Entry System - moved to PRIORITY 3 (ADVANCED)
 grpEarly = "⚡ Early Entry System"
-useEarlyEntry = input.bool(true, "Enable Early Entry Signals", group=grpEarly, tooltip="Catch high-probability setups before full confirmation")
-useVolumeFilterEarly = input.bool(false, "Enable Volume Filter for Early Entry", group=grpEarly, tooltip="OFF = more signals, ON = higher quality")
-useAggressiveMacd = input.bool(false, "Enable Aggressive MACD Threshold", group=grpEarly, tooltip="OFF = conservative (-0.15), ON = aggressive (-0.05)")
-earlyReversalBars = input.int(2, "Reversal Pattern Bars", minval=1, maxval=5, group=grpEarly)
-useSimpleReversal = input.bool(true, "Use Simple Reversal (vs Strict)", group=grpEarly, tooltip="More aggressive reversal detection")
-useUltraEarly = input.bool(false, "Enable Ultra-Aggressive Mode", group=grpEarly, tooltip="Maximum sensitivity - catches more opportunities but may increase noise")
-useMultiplePaths = input.bool(true, "Enable Multiple Entry Paths", group=grpEarly, tooltip="Alternative signal paths for better opportunity capture")
+useEarlyEntry = input.bool(true, "Enable Early Entry Signals", group = grpEarly,
+     tooltip = "Catch high-probability setups before full confirmation")
+useVolumeFilterEarly = input.bool(false, "Enable Volume Filter for Early Entry", group = grpEarly,
+     tooltip = "OFF = more signals, ON = higher quality")
+useAggressiveMacd = input.bool(false, "Enable Aggressive MACD Threshold", group = grpEarly,
+     tooltip = "OFF = conservative (-0.15), ON = aggressive (-0.05)")
+earlyReversalBars = input.int(2, "Reversal Pattern Bars", minval = 1, maxval = 5, group = grpEarly)
+useSimpleReversal = input.bool(true, "Use Simple Reversal (vs Strict)", group = grpEarly,
+     tooltip = "More aggressive reversal detection")
+useUltraEarly = input.bool(false, "Enable Ultra-Aggressive Mode", group = grpEarly,
+     tooltip = "Maximum sensitivity - catches more opportunities but may increase noise")
+useMultiplePaths = input.bool(true, "Enable Multiple Entry Paths", group = grpEarly,
+     tooltip = "Alternative signal paths for better opportunity capture")
 
 //=====================================================================================================================
 // 📈 TRAILING STOP - PRIORITY 3 (ADVANCED)
 //=====================================================================================================================
 grpTrailing = "📈 Trailing Stop"
-useTrailingStop = input.bool(true, "Enable Trailing Stop", group=grpTrailing)
-trailingActivation = input.float(0.8, "Activation %", minval=0.3, maxval=1.5, step=0.1, group=grpTrailing)
-trailingDistance = input.float(0.4, "Trailing Distance %", minval=0.1, maxval=0.8, step=0.1, group=grpTrailing)
+useTrailingStop = input.bool(true, "Enable Trailing Stop", group = grpTrailing)
+trailingActivation = input.float(0.8, "Activation %", minval = 0.3, maxval = 1.5, step = 0.1, group = grpTrailing)
+trailingDistance = input.float(0.4, "Trailing Distance %", minval = 0.1, maxval = 0.8, step = 0.1, group = grpTrailing)
 
 //=====================================================================================================================
 // 🚪 SMART EXIT SYSTEM - PRIORITY 2 (STRATEGY TUNING)
 //=====================================================================================================================
 grpSmartExit = "🚪 Smart Exit System"
-useReversalExits = input.bool(true, "Enable Reversal Exits", group=grpSmartExit, tooltip="Auto-exit on technical reversal patterns")
-useEmaBreakExits = input.bool(true, "Enable EMA Break Exits", group=grpSmartExit, tooltip="Exit when price breaks key EMA levels")
-reversalSensitivity = input.float(0.7, "Reversal Sensitivity", minval=0.3, maxval=1.0, step=0.1, group=grpSmartExit, tooltip="0.3=Conservative, 1.0=Aggressive")
-volumeConfirmation = input.bool(false, "Require Volume Confirmation", group=grpSmartExit, tooltip="Reversal must have volume > 1.2x average")
-emaExitLevel = input.string("Fast EMA", "EMA Exit Level", options=["Fast EMA", "Pivot EMA", "Slow EMA"], group=grpSmartExit, tooltip="Which EMA break triggers exit")
+useReversalExits = input.bool(true, "Enable Reversal Exits", group = grpSmartExit,
+     tooltip = "Auto-exit on technical reversal patterns")
+useEmaBreakExits = input.bool(true, "Enable EMA Break Exits", group = grpSmartExit,
+     tooltip = "Exit when price breaks key EMA levels")
+reversalSensitivity = input.float(0.7, "Reversal Sensitivity", minval = 0.3, maxval = 1.0, step = 0.1,
+     group = grpSmartExit, tooltip = "0.3=Conservative, 1.0=Aggressive")
+volumeConfirmation = input.bool(false, "Require Volume Confirmation", group = grpSmartExit,
+     tooltip = "Reversal must have volume > 1.2x average")
+emaExitLevel = input.string("Fast EMA", "EMA Exit Level", options = ["Fast EMA", "Pivot EMA", "Slow EMA"],
+     group = grpSmartExit, tooltip = "Which EMA break triggers exit")
 
 //=====================================================================================================================
 // 🏗️ SMA CONTEXT LEVELS - PRIORITY 3 (ADVANCED)
 //=====================================================================================================================
 grpSma = "🏗️ SMA Context Levels"
-useSmaFilter = input.bool(true, "Enable SMA Context Filter", group=grpSma)
-sma50Len = input.int(50, "SMA 50 Length", minval=30, maxval=70, group=grpSma)
-sma100Len = input.int(100, "SMA 100 Length", minval=80, maxval=120, group=grpSma)
-sma200Len = input.int(200, "SMA 200 Length", minval=150, maxval=250, group=grpSma)
+useSmaFilter = input.bool(true, "Enable SMA Context Filter", group = grpSma)
+sma50Len = input.int(50, "SMA 50 Length", minval = 30, maxval = 70, group = grpSma)
+sma100Len = input.int(100, "SMA 100 Length", minval = 80, maxval = 120, group = grpSma)
+sma200Len = input.int(200, "SMA 200 Length", minval = 150, maxval = 250, group = grpSma)
 
 //=====================================================================================================================
 // 🔍 DEBUG & CALIBRATION - PRIORITY 4 (DEBUG/ADVANCED)
 //=====================================================================================================================
 grpDebug = "🔍 Debug & Calibration"
-showPerformance = input.bool(true, "Show Performance Metrics", group=grpDebug, tooltip="Total trades, win rate, net profit")
-showSignalStatus = input.bool(false, "Show Signal Status", group=grpDebug, tooltip="EMA ribbon, MACD status, SMA context")
-showFilters = input.bool(false, "Show Filter Debug", group=grpDebug, tooltip="Signal filtering analysis")
-showLayerBreakdown = input.bool(false, "Show Layer Breakdown", group=grpDebug, tooltip="Show why standard signals pass/fail each layer")
-showSmartExit = input.bool(false, "Show Smart Exit Debug", group=grpDebug, tooltip="Exit system analysis")
-showPatterns = input.bool(false, "Show Pattern Debug", group=grpDebug, tooltip="Candlestick pattern analysis")
-showPosition = input.bool(false, "Show Position Management", group=grpDebug, tooltip="Trade management details")
-standardLongColor = input.color(color.lime, "Standard Long Color", group=grpDebug, tooltip="Color for standard long signals")
-standardShortColor = input.color(color.red, "Standard Short Color", group=grpDebug, tooltip="Color for standard short signals")
-earlyLongColor = input.color(color.yellow, "Early Long Color", group=grpDebug, tooltip="Color for early long signals")
-earlyShortColor = input.color(color.orange, "Early Short Color", group=grpDebug, tooltip="Color for early short signals")
-hammerShadowRatio = input.float(0.4, "Hammer Shadow Ratio", minval=0.2, maxval=0.8, step=0.1, group=grpDebug, tooltip="Lower shadow must be this ratio of total range")
-bodyToRangeRatio = input.float(0.4, "Body to Range Ratio", minval=0.2, maxval=0.6, step=0.1, group=grpDebug, tooltip="Body must be smaller than this ratio of total range")
-upperShadowRatio = input.float(0.25, "Upper Shadow Ratio", minval=0.1, maxval=0.4, step=0.05, group=grpDebug, tooltip="Upper shadow must be smaller than this ratio")
+showPerformance = input.bool(true, "Show Performance Metrics", group=grpDebug,
+     tooltip="Total trades, win rate, net profit")
+showSignalStatus = input.bool(false, "Show Signal Status", group=grpDebug,
+     tooltip="EMA ribbon, MACD status, SMA context")
+showFilters = input.bool(false, "Show Filter Debug", group=grpDebug,
+     tooltip="Signal filtering analysis")
+showLayerBreakdown = input.bool(false, "Show Layer Breakdown", group=grpDebug,
+     tooltip="Show why standard signals pass/fail each layer")
+showSmartExit = input.bool(false, "Show Smart Exit Debug", group=grpDebug,
+     tooltip="Exit system analysis")
+showPatterns = input.bool(false, "Show Pattern Debug", group=grpDebug,
+     tooltip="Candlestick pattern analysis")
+showPosition = input.bool(false, "Show Position Management", group=grpDebug,
+     tooltip="Trade management details")
+standardLongColor = input.color(color.lime, "Standard Long Color", group=grpDebug,
+     tooltip="Color for standard long signals")
+standardShortColor = input.color(color.red, "Standard Short Color", group=grpDebug,
+     tooltip="Color for standard short signals")
+earlyLongColor = input.color(color.yellow, "Early Long Color", group=grpDebug,
+     tooltip="Color for early long signals")
+earlyShortColor = input.color(color.orange, "Early Short Color", group=grpDebug,
+     tooltip="Color for early short signals")
+hammerShadowRatio = input.float(0.4, "Hammer Shadow Ratio", minval=0.2, maxval=0.8, step=0.1,
+     group=grpDebug, tooltip="Lower shadow must be this ratio of total range")
+bodyToRangeRatio = input.float(0.4, "Body to Range Ratio", minval=0.2, maxval=0.6, step=0.1,
+     group=grpDebug, tooltip="Body must be smaller than this ratio of total range")
+upperShadowRatio = input.float(0.25, "Upper Shadow Ratio", minval=0.1, maxval=0.4, step=0.05,
+     group=grpDebug, tooltip="Upper shadow must be smaller than this ratio")
 
 //=====================================================================================================================
 // 🔍 SIGNAL FILTERS
 //=====================================================================================================================
 grpFilters = "🔍 Advanced Filters"
 useVolumeFilter = input.bool(true, "Volume Filter", group=grpFilters)
-volumeThreshold = input.float(1.3, "Volume Threshold (x avg)", minval=1.0, maxval=3.0, step=0.1, group=grpFilters)
-useRibbonStrength = input.bool(true, "Ribbon Strength Filter", group=grpFilters, tooltip="All EMAs must be aligned")
-minRibbonGap = input.float(0.1, "Min Ribbon Gap %", minval=0.05, maxval=0.5, step=0.05, group=grpFilters, tooltip="Minimum gap between EMAs")
+volumeThreshold = input.float(1.3, "Volume Threshold (x avg)", minval=1.0, maxval=3.0, step=0.1,
+     group=grpFilters)
+useRibbonStrength = input.bool(true, "Ribbon Strength Filter", group=grpFilters,
+     tooltip="All EMAs must be aligned")
+minRibbonGap = input.float(0.1, "Min Ribbon Gap %", minval=0.05, maxval=0.5, step=0.05,
+     group=grpFilters, tooltip="Minimum gap between EMAs")
+
+//=====================================================================================================================
+// ✅ DATA VALIDATION SAFEGUARDS - Look-Ahead Bias Prevention
+//=====================================================================================================================
+// Comprehensive validation to prevent look-ahead bias and ensure realistic backtesting
+
+// ✅ 1. Confirm data availability and validity
+isDataValid = not na(close) and not na(volume) and not na(high) and not na(low) and not na(open)
+hasValidVolume = volume > 0 and not na(volume)
+hasValidPrice = close > 0 and high > 0 and low > 0 and open > 0
+
+// ✅ 2. Check for sufficient historical data (prevent insufficient data bias)
+requiredBars = math.max(slowEmaLen, math.max(sma200Len, 50)) + 10  // Ensure enough data for all indicators
+hasEnoughBars = bar_index >= requiredBars
+
+// ✅ 3. Validate price consistency (detect data anomalies)
+priceConsistency = high >= math.max(open, close) and low <= math.min(open, close) and high >= low
+validPriceRange = (high - low) / close < 0.5  // Reject bars with >50% range (likely data errors)
+
+// ✅ 4. Check for market hours (if applicable) and avoid weekend gaps
+// Note: This is optional and depends on the specific market being traded
+isMarketOpen = true  // Can be customized based on specific market requirements
+
+// ✅ 5. Enhanced risk management validation
+var int lastTradeBar = -999
+barsFromLastTrade = bar_index - lastTradeBar
+tradeGapOk = barsFromLastTrade >= minTradeGap
+
+// Calculate current drawdown for risk monitoring
+currentEquity = strategy.equity
+maxEquity = ta.highest(currentEquity, 252)  // 1 year lookback
+currentDrawdown = maxEquity > 0 ? (maxEquity - currentEquity) / maxEquity * 100 : 0
+drawdownOk = currentDrawdown <= maxDrawdownPercent
+
+// ✅ 6. Consolidated validation flag
+dataValidationPassed = isDataValid and hasValidVolume and hasValidPrice and hasEnoughBars and
+     priceConsistency and validPriceRange and isMarketOpen and tradeGapOk and drawdownOk
+
+// ✅ 6. Performance validation flags (detect unrealistic results)
+var int totalSignals = 0
+var int validationWarnings = 0
+
+// Note: Signal frequency validation will be added after signal generation to avoid circular reference
+
+// ✅ 7. Add debugging info for data validation failures
+debugDataValidation = false  // Set to true for debugging
+if debugDataValidation and not dataValidationPassed
+    label.new(bar_index, high, 
+              text="⚠️ DATA VALIDATION FAILED", 
+              color = color.red, 
+              textcolor = color.white, 
+              style = label.style_label_down, 
+              size = size.small)
 
 //=====================================================================================================================
 // 📊 EMA RIBBON CALCULATIONS
@@ -199,45 +306,48 @@ macdSignalCrossUp = macdPrev > signalPrev and macdPrev2 <= signalPrev2
 macdSignalCrossDown = macdPrev < signalPrev and macdPrev2 >= signalPrev2
 
 // Early Momentum Signals (using previous bar to avoid look-ahead)
-macdMomentumUp = useMomentumSignals and macdPrev > signalPrev and (macdPrev - macdPrev2) > momentumThreshold and macdPrev < 0
-macdMomentumDown = useMomentumSignals and macdPrev < signalPrev and (macdPrev - macdPrev2) < -momentumThreshold and macdPrev > 0
+macdMomentumUp = useMomentumSignals and macdPrev > signalPrev and (macdPrev - macdPrev2) > momentumThreshold and
+     macdPrev < 0
+macdMomentumDown = useMomentumSignals and macdPrev < signalPrev and (macdPrev - macdPrev2) < -momentumThreshold and
+     macdPrev > 0
 
 //=====================================================================================================================
 // 🎯 MULTI-LAYER SIGNAL SYSTEM
 //=====================================================================================================================
 // Layer 1: EMA Ribbon Trend Direction
-layer1_ribbonLong = bullishRibbon and ribbonStrengthOk and longTermBullish
-layer1_ribbonShort = bearishRibbon and ribbonStrengthOk and longTermBearish
+layer1RibbonLong = bullishRibbon and ribbonStrengthOk and longTermBullish
+layer1RibbonShort = bearishRibbon and ribbonStrengthOk and longTermBearish
 
 // Layer 2: MACD Momentum Confirmation
-layer2_macdLong = (useZeroCross and macdZeroCrossUp) or (useSignalCross and macdSignalCrossUp) or macdMomentumUp
-layer2_macdShort = (useZeroCross and macdZeroCrossDown) or (useSignalCross and macdSignalCrossDown) or macdMomentumDown
+layer2MacdLong = (useZeroCross and macdZeroCrossUp) or (useSignalCross and macdSignalCrossUp) or macdMomentumUp
+layer2MacdShort = (useZeroCross and macdZeroCrossDown) or (useSignalCross and macdSignalCrossDown) or macdMomentumDown
 
 // Layer 3: Volume Confirmation (using previous bar to avoid look-ahead)
 avgVolume = ta.sma(volume, 20)
 volumePrev = volume[1]
 avgVolumePrev = avgVolume[1]
-layer3_volumeOk = not useVolumeFilter or volumePrev > avgVolumePrev * volumeThreshold
+layer3VolumeOk = not useVolumeFilter or volumePrev > avgVolumePrev * volumeThreshold
 
 // Layer 4: Risk Management
 var int dailyTrades = 0
 var int currentDay = 0
 
-// Improved session detection using timestamp
-dayTimestamp = math.floor(timenow / 86400000)  // Convert to days since epoch
-newDay = currentDay != dayTimestamp
+// ✅ FIXED: Proper historical session detection (no look-ahead bias)
+// Use time instead of timenow to avoid look-ahead bias
+currentDayTimestamp = math.floor(time / 86400000)  // Convert to days since epoch using historical time
+newDay = currentDay != currentDayTimestamp
 if newDay
     dailyTrades := 0
-    currentDay := dayTimestamp
+    currentDay := currentDayTimestamp
 
 if strategy.closedtrades > strategy.closedtrades[1]
     dailyTrades := dailyTrades + 1
 
-layer4_riskOk = dailyTrades < maxDailyTrades
+layer4RiskOk = dailyTrades < maxDailyTrades
 
 // Final Signal Generation
-rawLongSignal = layer1_ribbonLong and layer2_macdLong and layer3_volumeOk and layer4_riskOk
-rawShortSignal = layer1_ribbonShort and layer2_macdShort and layer3_volumeOk and layer4_riskOk
+rawLongSignal = layer1RibbonLong and layer2MacdLong and layer3VolumeOk and layer4RiskOk
+rawShortSignal = layer1RibbonShort and layer2MacdShort and layer3VolumeOk and layer4RiskOk
 
 //=====================================================================================================================
 // ⚡ EARLY ENTRY SYSTEM - ENHANCED MULTI-PATH
@@ -269,8 +379,10 @@ ultraBearishReversal = closePrev < close2
 momentumBearishReversal = (closePrev < open1) or (low1 < low2)
 
 // Select reversal patterns based on settings (reuse calculations)
-strongBullishReversal = useUltraEarly ? (momentumBullishReversal or ultraBullishReversal) : (useSimpleReversal ? simpleBullishReversal : strictBullishReversal)
-strongBearishReversal = useUltraEarly ? (momentumBearishReversal or ultraBearishReversal) : (useSimpleReversal ? simpleBearishReversal : strictBearishReversal)
+strongBullishReversal = useUltraEarly ? (momentumBullishReversal or ultraBullishReversal) :
+     (useSimpleReversal ? simpleBullishReversal : strictBullishReversal)
+strongBearishReversal = useUltraEarly ? (momentumBearishReversal or ultraBearishReversal) :
+     (useSimpleReversal ? simpleBearishReversal : strictBearishReversal)
 
 // Pre-calculate common setup conditions
 priceAboveFast = closePrev > fastEmaPrev
@@ -285,7 +397,7 @@ recentHighMax = math.max(high1, high2)
 recentLowMin = math.min(low1, low2)
 
 // Early volume confirmation
-earlyVolumeOk = useVolumeFilterEarly ? layer3_volumeOk : true
+earlyVolumeOk = useVolumeFilterEarly ? layer3VolumeOk : true
 volumeBurst = useVolumeFilterEarly ? volumePrev > avgVolumePrev * 1.5 : true
 
 // BULLISH PATHS
@@ -297,12 +409,15 @@ pureBreakout = closePrev > recentHighMax
 
 // Multiple early entry paths
 earlyPath1 = earlyBullishSetup and strongBullishReversal and oversoldMacdTurning
-earlyPath2 = useMultiplePaths and momentumSetup and ultraBullishReversal and macdTurningPositive
-earlyPath3 = useMultiplePaths and trendContinuationSetup and continuationReversal and macdBelowZero
+earlyPath2 = useMultiplePaths and momentumSetup and ultraBullishReversal and
+     macdTurningPositive
+earlyPath3 = useMultiplePaths and trendContinuationSetup and continuationReversal and
+     macdBelowZero
 earlyPath4 = useUltraEarly and pureBreakout and volumeBurst and macdTurningPositive
 
 // Combined early long signal
-earlyLongSignal = useEarlyEntry and (earlyPath1 or earlyPath2 or earlyPath3 or earlyPath4) and earlyVolumeOk and layer4_riskOk
+earlyLongSignal = useEarlyEntry and (earlyPath1 or earlyPath2 or earlyPath3 or earlyPath4) and
+     earlyVolumeOk and layer4RiskOk
 
 // BEARISH PATHS
 earlyBearishSetup = priceBelowPivot and pivotBelowSlow
@@ -313,12 +428,15 @@ pureBreakdown = closePrev < recentLowMin
 
 // Bearish early entry paths
 earlyBearishPath1 = earlyBearishSetup and strongBearishReversal and overboughtMacdTurning
-earlyBearishPath2 = useMultiplePaths and bearishMomentumSetup and ultraBearishReversal and macdTurningNegative
-earlyBearishPath3 = useMultiplePaths and bearishContinuationSetup and bearishContinuationReversal and macdAboveZero
+earlyBearishPath2 = useMultiplePaths and bearishMomentumSetup and ultraBearishReversal and
+     macdTurningNegative
+earlyBearishPath3 = useMultiplePaths and bearishContinuationSetup and bearishContinuationReversal and
+     macdAboveZero
 earlyBearishPath4 = useUltraEarly and pureBreakdown and volumeBurst and macdTurningNegative
 
 // Combined early short signal
-earlyShortSignal = useEarlyEntry and (earlyBearishPath1 or earlyBearishPath2 or earlyBearishPath3 or earlyBearishPath4) and earlyVolumeOk and layer4_riskOk
+earlyShortSignal = useEarlyEntry and (earlyBearishPath1 or earlyBearishPath2 or earlyBearishPath3 or
+     earlyBearishPath4) and earlyVolumeOk and layer4RiskOk
 
 //=====================================================================================================================
 // ✅ SIGNAL CONFIRMATION LOGIC
@@ -342,11 +460,13 @@ currentBarRawEarlyShort = earlyShortSignal
 
 // Step 1: Simple confirmation detection - consecutive early signals in same direction
 barsFromLastRawSignal = bar_index - lastRawSignalBar
-isWithinConfirmationWindow = barsFromLastRawSignal <= confirmationWindow and barsFromLastRawSignal > 0
+isWithinConfirmationWindow = barsFromLastRawSignal <= confirmationWindow and
+     barsFromLastRawSignal > 0
 
 // Simple confirmation logic: second early signal in same direction becomes confirmation
 // BUT suppress confirmations if we already had one in the same direction (automation safety)
-confirmedLongSignal = useSignalConfirmation and currentBarRawEarlyLong and (lastRawSignalType == 1) and isWithinConfirmationWindow and (lastEarlySignalDirection != 1)
+confirmedLongSignal = useSignalConfirmation and currentBarRawEarlyLong and (lastRawSignalType == 1) and
+     isWithinConfirmationWindow and (lastEarlySignalDirection != 1)
 confirmedShortSignal = useSignalConfirmation and currentBarRawEarlyShort and (lastRawSignalType == -1) and isWithinConfirmationWindow and (lastEarlySignalDirection != -1)
 
 // Step 2: Track confirmation state for suppression
@@ -388,8 +508,10 @@ upgradedStandardShort = confirmedShortSignal and upgradeConfirmedSignals
 // Base signal determination (before filtering) - Only use confirmed signals for entries
 baseStandardLong = upgradedStandardLong  
 baseStandardShort = upgradedStandardShort
-baseEarlyLong = earlyLongSignal and not upgradedStandardLong and not suppressEarlyLong
-baseEarlyShort = earlyShortSignal and not upgradedStandardShort and not suppressEarlyShort
+baseEarlyLong = earlyLongSignal and not upgradedStandardLong and
+     not suppressEarlyLong
+baseEarlyShort = earlyShortSignal and not upgradedStandardShort and
+     not suppressEarlyShort
 
 // Combined Signal System (Standard + Early Entry + Confirmed) - BEFORE filtering
 combinedLongSignal = baseStandardLong or baseEarlyLong
@@ -425,12 +547,16 @@ isEarlyShortSignal = combinedEarlyShort and combinedShortSignal
 isConfirmedLongSignal = upgradedStandardLong and combinedLongSignal
 isConfirmedShortSignal = upgradedStandardShort and combinedShortSignal
 
-effectiveLongCooldown = (isEarlyLongSignal and not isConfirmedLongSignal) ? earlyCooldownBars : standardCooldownBars
-effectiveShortCooldown = (isEarlyShortSignal and not isConfirmedShortSignal) ? earlyCooldownBars : standardCooldownBars
+effectiveLongCooldown = (isEarlyLongSignal and not isConfirmedLongSignal) ?
+     earlyCooldownBars : standardCooldownBars
+effectiveShortCooldown = (isEarlyShortSignal and not isConfirmedShortSignal) ?
+     earlyCooldownBars : standardCooldownBars
 
 // STEP 4: Calculate cooldown filters (no circular dependency)
-longCooldownOk = not useSignalCooldown or barsFromLastLong >= effectiveLongCooldown or (allowConfirmationBypass and isConfirmedLongSignal)
-shortCooldownOk = not useSignalCooldown or barsFromLastShort >= effectiveShortCooldown or (allowConfirmationBypass and isConfirmedShortSignal)
+longCooldownOk = not useSignalCooldown or barsFromLastLong >= effectiveLongCooldown or
+     (allowConfirmationBypass and isConfirmedLongSignal)
+shortCooldownOk = not useSignalCooldown or barsFromLastShort >= effectiveShortCooldown or
+     (allowConfirmationBypass and isConfirmedShortSignal)
 
 // STEP 5: Rapid reversal prevention
 rapidReversalBlock = preventRapidReversals and barsFromLastSignal < earlyCooldownBars
@@ -447,9 +573,18 @@ sma20Prev = sma20[1]
 structureLevel = marketStructureMode == "SMA 20" ? sma20Prev : pivotEmaPrev
 marketStructureOk = not useMarketStructureFilter or (combinedLongSignal and close[1] > structureLevel) or (combinedShortSignal and close[1] < structureLevel)
 
-// STEP 8: Final signal calculation (NO circular dependency)
-finalLongSignal = combinedLongSignal and strategy.position_size <= 0 and longCooldownOk and longReversalOk and signalStrengthLong and marketStructureOk
-finalShortSignal = combinedShortSignal and strategy.position_size >= 0 and shortCooldownOk and shortReversalOk and signalStrengthShort and marketStructureOk
+// STEP 8: Final signal calculation with data validation (NO circular dependency)
+finalLongSignal = combinedLongSignal and strategy.position_size <= 0 and longCooldownOk and longReversalOk and signalStrengthLong and marketStructureOk and dataValidationPassed
+finalShortSignal = combinedShortSignal and strategy.position_size >= 0 and shortCooldownOk and shortReversalOk and signalStrengthShort and marketStructureOk and dataValidationPassed
+
+// ✅ Signal frequency validation (after signal generation to avoid circular reference)
+if finalLongSignal or finalShortSignal
+    totalSignals += 1
+
+// Warning if too many signals (possible over-fitting)
+signalFrequencyOk = bar_index == 0 or (totalSignals / math.max(bar_index, 1) * 100) < 5.0  // Max 5% of bars
+if not signalFrequencyOk
+    validationWarnings += 1
 
 //=====================================================================================================================
 // 🚪 SMART EXIT SYSTEM - Reversal Detection & EMA Break Exits
@@ -481,7 +616,8 @@ shootingStarUpperShadow = upperShadow >= candleRange * hammerShadowRatio
 shootingStarBodySize = candleBody <= candleRange * bodyToRangeRatio
 shootingStarLowerShadow = lowerShadow <= candleRange * upperShadowRatio
 shootingStarMinSize = candleRange > atr14Prev * 0.3
-shootingStarPattern = shootingStarUpperShadow and shootingStarBodySize and shootingStarLowerShadow and shootingStarMinSize
+shootingStarPattern = shootingStarUpperShadow and shootingStarBodySize and
+     shootingStarLowerShadow and shootingStarMinSize
 
 // Enhanced Doji Pattern: More flexible body size - with error handling
 dojiBodyRatio = candleRange > 0 ? candleBody / candleRange : 0
@@ -497,7 +633,8 @@ bullishEngulfing = bullishEngulfingBody and bullishEngulfingSize and bullishEngu
 bearishEngulfingBody = closePrev < open1 and close2 > open2  // Current red, previous green
 bearishEngulfingSize = closePrev < open2 and open1 > close2  // Bodies overlap significantly
 bearishEngulfingVolume = not volumeConfirmation or volumePrev > avgVolumePrev
-bearishEngulfing = bearishEngulfingBody and bearishEngulfingSize and bearishEngulfingVolume
+bearishEngulfing = bearishEngulfingBody and bearishEngulfingSize and
+     bearishEngulfingVolume
 
 // Strong Reversal Patterns: Large body reversals (like 9:15 scenario)
 // Pre-calculate common thresholds to avoid redundant calculations
@@ -612,29 +749,31 @@ if strategy.position_size < 0 and useTrailingStop
 //=====================================================================================================================
 // Entry Orders with Cooldown Timer Updates
 if finalLongSignal
-    strategy.entry("EMA_Long", strategy.long, comment="Ribbon+MACD Long")
+    strategy.entry("EMA_Long", strategy.long, comment = "Ribbon+MACD Long")
     // Update cooldown timers ONLY on actual trade execution
     lastLongSignalBar := bar_index
     lastSignalBar := bar_index
+    lastTradeBar := bar_index  // Track for trade gap validation
 
 if finalShortSignal
-    strategy.entry("EMA_Short", strategy.short, comment="Ribbon+MACD Short")
+    strategy.entry("EMA_Short", strategy.short, comment = "Ribbon+MACD Short")
     // Update cooldown timers ONLY on actual trade execution
     lastShortSignalBar := bar_index
     lastSignalBar := bar_index
+    lastTradeBar := bar_index  // Track for trade gap validation
 
 // Exit Orders
 if strategy.position_size > 0
     if useTrailingStop and trailingActive
-        strategy.exit("Long_Exit", "EMA_Long", stop=trailingStopPrice, limit=takeProfitPrice, comment="Trailing")
+        strategy.exit("Long_Exit", "EMA_Long", stop = trailingStopPrice, limit = takeProfitPrice, comment = "Trailing")
     else
-        strategy.exit("Long_Exit", "EMA_Long", stop=stopLossPrice, limit=takeProfitPrice, comment="Fixed")
+        strategy.exit("Long_Exit", "EMA_Long", stop = stopLossPrice, limit = takeProfitPrice, comment = "Fixed")
 
 if strategy.position_size < 0
     if useTrailingStop and trailingActive
-        strategy.exit("Short_Exit", "EMA_Short", stop=trailingStopPrice, limit=takeProfitPrice, comment="Trailing")
+        strategy.exit("Short_Exit", "EMA_Short", stop = trailingStopPrice, limit = takeProfitPrice, comment = "Trailing")
     else
-        strategy.exit("Short_Exit", "EMA_Short", stop=stopLossPrice, limit=takeProfitPrice, comment="Fixed")
+        strategy.exit("Short_Exit", "EMA_Short", stop = stopLossPrice, limit = takeProfitPrice, comment = "Fixed")
 
 // Smart Exit Orders (Override regular exits when reversal detected)
 if smartExitLong
@@ -651,13 +790,13 @@ if smartExitShort
 // Note: MACD already calculated above, reusing existing variables
 
 // MACD Plots
-macdPlot = plot(macdLine, "MACD Line", color.blue, 3)
-signalPlot = plot(signalLine, "Signal Line", color.red, 2)
-plot(histogramLine, "Histogram", color.gray, style=plot.style_histogram)
-hline(0, "Zero Line", color.black, linestyle=hline.style_solid, linewidth=2)
+macdPlot = plot(macdLine, title = "MACD Line", color = color.blue, linewidth = 3)
+signalPlot = plot(signalLine, title = "Signal Line", color = color.red, linewidth = 2)
+plot(histogramLine, title = "Histogram", color = color.gray, style = plot.style_histogram)
+hline(0, "Zero Line", color.black, linestyle = hline.style_solid, linewidth = 2)
 
 // MACD Fill
-fill(macdPlot, signalPlot, color=macdLine > signalLine ? color.new(color.green, 80) : color.new(color.red, 80), title="MACD Fill")
+fill(macdPlot, signalPlot, color = macdLine > signalLine ? color.new(color.green, 80) : color.new(color.red, 80), title = "MACD Fill")
 
 // Ribbon Strength Indicators (scaled for MACD pane)
 ribbonStrengthCombined = (fastPivotGap + pivotSlowGap) / 2  // Average gap strength
@@ -665,40 +804,44 @@ ribbonStrengthScaled = ribbonStrengthCombined * 10  // Scale for visibility in M
 
 // Ribbon Strength Plot
 ribbonStrengthColor = ribbonStrengthOk ? color.lime : color.orange
-plot(ribbonStrengthScaled, "Ribbon Strength", ribbonStrengthColor, 2, plot.style_area)
+plot(ribbonStrengthScaled, title = "Ribbon Strength", color = ribbonStrengthColor, 
+         linewidth = 2, style = plot.style_area)
 
 // Ribbon Direction Indicator
 ribbonDirection = bullishRibbon ? 1 : bearishRibbon ? -1 : 0
 ribbonDirectionScaled = ribbonDirection * 0.5  // Scale for MACD pane
 ribbonDirColor = bullishRibbon ? color.green : bearishRibbon ? color.red : color.gray
-plot(ribbonDirectionScaled, "Ribbon Direction", ribbonDirColor, 3, plot.style_stepline)
+plot(ribbonDirectionScaled, title = "Ribbon Direction", color = ribbonDirColor, 
+         linewidth = 3, style = plot.style_stepline)
 
 // Signal Quality Histogram
-signalQuality = (layer1_ribbonLong or layer1_ribbonShort ? 1 : 0) + (layer2_macdLong or layer2_macdShort ? 1 : 0) + (layer3_volumeOk ? 1 : 0) + (layer4_riskOk ? 1 : 0)
+signalQuality = (layer1RibbonLong or layer1RibbonShort ? 1 : 0) + (layer2MacdLong or layer2MacdShort ? 1 : 0) + (layer3VolumeOk ? 1 : 0) + (layer4RiskOk ? 1 : 0)
 signalQualityScaled = signalQuality * 0.25  // Scale 0-1 range
 signalQualityColor = signalQuality >= 3 ? color.lime : signalQuality >= 2 ? color.yellow : color.red
-plot(signalQualityScaled, "Signal Quality", signalQualityColor, 1, plot.style_columns)
+plot(signalQualityScaled, title = "Signal Quality", color = signalQualityColor, 
+         linewidth = 1, style = plot.style_columns)
 
 // Reference lines for ribbon strength
-hline(minRibbonGap * 10, "Min Ribbon Gap", color.orange, linestyle=hline.style_dotted)
-hline(0.5, "Ribbon Strong", color.lime, linestyle=hline.style_dashed)
+hline(minRibbonGap * 10, "Min Ribbon Gap", color.orange, linestyle = hline.style_dotted)
+hline(0.5, "Ribbon Strong", color.lime, linestyle = hline.style_dashed)
 
 // Volume Strength (scaled to fit)
 volumeStrength = volumePrev > avgVolumePrev * volumeThreshold ? 0.8 : 0.2
-plot(volumeStrength, "Volume Strength", color.purple, 1, plot.style_stepline)
+plot(volumeStrength, title = "Volume Strength", color = color.purple, 
+         linewidth = 1, style = plot.style_stepline)
 
 // Enhanced Signal Display with Confirmation System
 // Since baseStandardLong/baseStandardShort now only contain confirmed signals, show them with "C" text
-plotshape(baseStandardLong, title="Confirmed Long", style=shape.triangleup, location=location.bottom, color=standardLongColor, size=size.small, text="C")
-plotshape(baseStandardShort, title="Confirmed Short", style=shape.triangledown, location=location.bottom, color=standardShortColor, size=size.small, text="C")
+plotshape(baseStandardLong, title = "Confirmed Long", style = shape.triangleup, location = location.bottom, color = standardLongColor, size = size.small, text = "C")
+plotshape(baseStandardShort, title = "Confirmed Short", style = shape.triangledown, location = location.bottom, color = standardShortColor, size = size.small, text = "C")
 
 // Raw standard signals (for reference only - not used for entries)
-plotshape(rawLongSignal and not upgradedStandardLong, title="Raw Long (Reference)", style=shape.triangleup, location=location.bottom, color=color.new(standardLongColor, 70), size=size.tiny, text="R")
-plotshape(rawShortSignal and not upgradedStandardShort, title="Raw Short (Reference)", style=shape.triangledown, location=location.bottom, color=color.new(standardShortColor, 70), size=size.tiny, text="R")
+plotshape(rawLongSignal and not upgradedStandardLong, title = "Raw Long (Reference)", style = shape.triangleup, location = location.bottom, color = color.new(standardLongColor, 70), size = size.tiny, text = "R")
+plotshape(rawShortSignal and not upgradedStandardShort, title = "Raw Short (Reference)", style = shape.triangledown, location = location.bottom, color = color.new(standardShortColor, 70), size = size.tiny, text = "R")
 
 // Early Entry Signals (only show non-confirmed early signals)
-plotshape(baseEarlyLong and strategy.position_size <= 0, title="Early Long", style=shape.triangleup, location=location.bottom, color=earlyLongColor, size=size.tiny, text="E")
-plotshape(baseEarlyShort and strategy.position_size >= 0, title="Early Short", style=shape.triangledown, location=location.bottom, color=earlyShortColor, size=size.tiny, text="E")
+plotshape(baseEarlyLong and strategy.position_size <= 0, title = "Early Long", style = shape.triangleup, location = location.bottom, color = earlyLongColor, size = size.tiny, text = "E")
+plotshape(baseEarlyShort and strategy.position_size >= 0, title = "Early Short", style = shape.triangledown, location = location.bottom, color = earlyShortColor, size = size.tiny, text = "E")
 
 // Signal labels removed for cleaner chart visualization
 // Signals are now indicated purely by triangle shapes and colors
@@ -712,10 +855,44 @@ longTpPlot = strategy.position_size > 0 ? takeProfitPrice : na
 shortStopPlot = strategy.position_size < 0 ? (useTrailingStop and trailingActive ? trailingStopPrice : stopLossPrice) : na
 shortTpPlot = strategy.position_size < 0 ? takeProfitPrice : na
 
-plot(longStopPlot, "Long Stop", color.red, 2, plot.style_linebr)
-plot(longTpPlot, "Long TP", color.green, 2, plot.style_linebr)
-plot(shortStopPlot, "Short Stop", color.red, 2, plot.style_linebr)
-plot(shortTpPlot, "Short TP", color.green, 2, plot.style_linebr)
+plot(longStopPlot, title = "Long Stop", color = color.red, linewidth = 2, style = plot.style_linebr)
+plot(longTpPlot, title = "Long TP", color = color.green, linewidth = 2, style = plot.style_linebr)
+plot(shortStopPlot, title = "Short Stop", color = color.red, linewidth = 2, style = plot.style_linebr)
+plot(shortTpPlot, title = "Short TP", color = color.green, linewidth = 2, style = plot.style_linebr)
+
+//=====================================================================================================================
+// ⚠️ PERFORMANCE VALIDATION & RED FLAG DETECTION
+//=====================================================================================================================
+// Calculate key performance metrics to detect unrealistic results
+if barstate.islast
+    // Calculate performance metrics
+    totalTrades = strategy.closedtrades
+    winRate = totalTrades > 0 ? strategy.wintrades / totalTrades * 100 : 0
+    profitFactor = strategy.grossloss != 0 ? math.abs(strategy.grossprofit / strategy.grossloss) : 0
+    maxDD = strategy.max_drawdown / strategy.initial_capital * 100
+    
+    // ⚠️ RED FLAG DETECTION - Unrealistic Performance Indicators
+    redFlagWinRate = winRate > 80  // Win rates above 80% are suspicious
+    redFlagProfitFactor = profitFactor > 3.0  // Profit factors above 3.0 are suspicious
+    redFlagLowDrawdown = maxDD < 3.0 and totalTrades > 10  // Too low drawdown is suspicious
+    redFlagHighFreq = signalFrequencyOk == false  // Too many signals
+    redFlagValidation = validationWarnings > 10  // Too many validation warnings
+    
+    // Count red flags
+    totalRedFlags = (redFlagWinRate ? 1 : 0) + (redFlagProfitFactor ? 1 : 0) + (redFlagLowDrawdown ? 1 : 0) + (redFlagHighFreq ? 1 : 0) + (redFlagValidation ? 1 : 0)
+    
+    // Performance assessment
+    performanceStatus = totalRedFlags >= 3 ? "⚠️ HIGH RISK" : totalRedFlags >= 2 ? "⚠️ MODERATE RISK" : totalRedFlags >= 1 ? "⚠️ LOW RISK" : "✅ REALISTIC"
+    
+    // Log warnings for unrealistic performance
+    if totalRedFlags > 0
+        log.warning("Performance Red Flags Detected: " + str.tostring(totalRedFlags) + " - " + performanceStatus)
+        if redFlagWinRate
+            log.warning("Red Flag: Win rate too high (" + str.tostring(winRate, "#.1f") + "%) - possible look-ahead bias")
+        if redFlagProfitFactor
+            log.warning("Red Flag: Profit factor too high (" + str.tostring(profitFactor, "#.2f") + ") - possible over-optimization")
+        if redFlagLowDrawdown
+            log.warning("Red Flag: Drawdown suspiciously low (" + str.tostring(maxDD, "#.1f") + "%) - possible curve fitting")
 
 //=====================================================================================================================
 // 📊 ORGANIZED DEBUG DASHBOARD
@@ -733,11 +910,11 @@ if barstate.islast
         var table perfTable = na
         if not na(perfTable)
             table.delete(perfTable)
-        perfTable := table.new(position.bottom_right, 2, maxRows, bgcolor=color.white, border_width=2)
+        perfTable := table.new(position.bottom_right, 2, maxRows, bgcolor = color.white, border_width = 2)
 
         // Header
-        table.cell(perfTable, 0, 0, "🎯 RIBBON MACD", text_color=color.white, bgcolor=color.navy)
-        table.cell(perfTable, 1, 0, "DEBUG", text_color=color.white, bgcolor=color.navy)
+        table.cell(perfTable, 0, 0, "🎯 RIBBON MACD", text_color = color.white, bgcolor = color.navy)
+        table.cell(perfTable, 1, 0, "DEBUG", text_color = color.white, bgcolor = color.navy)
 
         var int rowIndex = 1
 
@@ -745,62 +922,78 @@ if barstate.islast
         if showPerformance
             winRate = strategy.wintrades / math.max(strategy.closedtrades, 1) * 100
 
-            table.cell(perfTable, 0, rowIndex, "Total Trades", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, str.tostring(strategy.closedtrades), text_color=strategy.closedtrades > 0 ? color.green : color.gray)
+            table.cell(perfTable, 0, rowIndex, "Total Trades", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, str.tostring(strategy.closedtrades), text_color = strategy.closedtrades > 0 ? color.green : color.gray)
             rowIndex += 1
 
-            table.cell(perfTable, 0, rowIndex, "Win Rate", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, str.tostring(winRate, "#.#") + "%", text_color=winRate > 60 ? color.green : color.red)
+            table.cell(perfTable, 0, rowIndex, "Win Rate", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, str.tostring(winRate, "#.#") + "%", text_color = winRate > 60 ? color.green : color.red)
             rowIndex += 1
 
-            table.cell(perfTable, 0, rowIndex, "Net Profit", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, str.tostring(strategy.netprofit, "$#,###"), text_color=strategy.netprofit > 0 ? color.green : color.red)
+            table.cell(perfTable, 0, rowIndex, "Net Profit", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, str.tostring(strategy.netprofit, "$#,###"), text_color = strategy.netprofit > 0 ? color.green : color.red)
+            rowIndex += 1
+
+            // ✅ Performance Validation Metrics
+            table.cell(perfTable, 0, rowIndex, "Performance Status", text_color = color.black)
+            statusColor = totalRedFlags >= 2 ? color.red : totalRedFlags >= 1 ? color.orange : color.green
+            table.cell(perfTable, 1, rowIndex, performanceStatus, text_color = statusColor)
+            rowIndex += 1
+
+            table.cell(perfTable, 0, rowIndex, "Red Flags", text_color = color.black)
+            flagColor = totalRedFlags >= 2 ? color.red : totalRedFlags >= 1 ? color.orange : color.green
+            table.cell(perfTable, 1, rowIndex, str.tostring(totalRedFlags) + "/5", text_color = flagColor)
+            rowIndex += 1
+
+            table.cell(perfTable, 0, rowIndex, "Drawdown %", text_color = color.black)
+            ddColor = currentDrawdown > maxDrawdownPercent ? color.red : currentDrawdown > maxDrawdownPercent * 0.7 ? color.orange : color.green
+            table.cell(perfTable, 1, rowIndex, str.tostring(currentDrawdown, "#.1f") + "%", text_color = ddColor)
             rowIndex += 1
 
         // Signal Status
         if showSignalStatus
             ribbonStatus = bullishRibbon ? "BULLISH" : bearishRibbon ? "BEARISH" : "MIXED"
             ribbonColor = bullishRibbon ? color.green : bearishRibbon ? color.red : color.orange
-            table.cell(perfTable, 0, rowIndex, "EMA Ribbon", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, ribbonStatus, text_color=ribbonColor)
+            table.cell(perfTable, 0, rowIndex, "EMA Ribbon", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, ribbonStatus, text_color = ribbonColor)
             rowIndex += 1
 
             macdStatus = macdPrev > 0 ? "BULL" : "BEAR"
             macdColor = macdPrev > 0 ? color.green : color.red
-            table.cell(perfTable, 0, rowIndex, "MACD Status", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, macdStatus, text_color=macdColor)
+            table.cell(perfTable, 0, rowIndex, "MACD Status", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, macdStatus, text_color = macdColor)
             rowIndex += 1
 
             smaStatus = sma50 > sma200 ? "BULLISH" : "BEARISH"
             smaColor = sma50 > sma200 ? color.green : color.red
-            table.cell(perfTable, 0, rowIndex, "SMA Context", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, smaStatus, text_color=smaColor)
+            table.cell(perfTable, 0, rowIndex, "SMA Context", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, smaStatus, text_color = smaColor)
             rowIndex += 1
 
         // Layer Breakdown Debug
         if showLayerBreakdown
-            layer1Status = layer1_ribbonLong ? "LONG✓" : layer1_ribbonShort ? "SHORT✓" : "FAIL"
-            layer1Color = layer1_ribbonLong ? color.green : layer1_ribbonShort ? color.red : color.orange
-            table.cell(perfTable, 0, rowIndex, "Layer 1 (EMA)", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, layer1Status, text_color=layer1Color)
+            layer1Status = layer1RibbonLong ? "LONG✓" : layer1RibbonShort ? "SHORT✓" : "FAIL"
+            layer1Color = layer1RibbonLong ? color.green : layer1RibbonShort ? color.red : color.orange
+            table.cell(perfTable, 0, rowIndex, "Layer 1 (EMA)", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, layer1Status, text_color = layer1Color)
             rowIndex += 1
 
-            layer2Status = layer2_macdLong ? "LONG✓" : layer2_macdShort ? "SHORT✓" : "FAIL"
-            layer2Color = layer2_macdLong ? color.green : layer2_macdShort ? color.red : color.orange
-            table.cell(perfTable, 0, rowIndex, "Layer 2 (MACD)", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, layer2Status, text_color=layer2Color)
+            layer2Status = layer2MacdLong ? "LONG✓" : layer2MacdShort ? "SHORT✓" : "FAIL"
+            layer2Color = layer2MacdLong ? color.green : layer2MacdShort ? color.red : color.orange
+            table.cell(perfTable, 0, rowIndex, "Layer 2 (MACD)", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, layer2Status, text_color = layer2Color)
             rowIndex += 1
 
-            layer3Status = layer3_volumeOk ? "PASS✓" : "FAIL"
-            layer3Color = layer3_volumeOk ? color.green : color.red
-            table.cell(perfTable, 0, rowIndex, "Layer 3 (Volume)", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, layer3Status, text_color=layer3Color)
+            layer3Status = layer3VolumeOk ? "PASS✓" : "FAIL"
+            layer3Color = layer3VolumeOk ? color.green : color.red
+            table.cell(perfTable, 0, rowIndex, "Layer 3 (Volume)", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, layer3Status, text_color = layer3Color)
             rowIndex += 1
 
-            layer4Status = layer4_riskOk ? "PASS✓" : "FAIL"
-            layer4Color = layer4_riskOk ? color.green : color.red
-            table.cell(perfTable, 0, rowIndex, "Layer 4 (Risk)", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, layer4Status, text_color=layer4Color)
+            layer4Status = layer4RiskOk ? "PASS✓" : "FAIL"
+            layer4Color = layer4RiskOk ? color.green : color.red
+            table.cell(perfTable, 0, rowIndex, "Layer 4 (Risk)", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, layer4Status, text_color = layer4Color)
             rowIndex += 1
 
         // Filter Debug
@@ -819,8 +1012,8 @@ if barstate.islast
             longSignalColor = baseStandardLong ? longStandardColor : color.yellow
             shortSignalColor = baseStandardShort ? shortStandardColor : color.orange
             signalColor = combinedLongSignal ? longSignalColor : combinedShortSignal ? shortSignalColor : color.gray
-            table.cell(perfTable, 0, rowIndex, "Signal Ready", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, signalText, text_color=signalColor)
+            table.cell(perfTable, 0, rowIndex, "Signal Ready", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, signalText, text_color = signalColor)
             rowIndex += 1
 
             // FIXED: Use actual cooldown logic to determine display - matches strategy execution logic
@@ -838,16 +1031,16 @@ if barstate.islast
             cooldownActiveText = cooldownReady ? "READY" : cooldownBarsText
             cooldownText = useSignalCooldown ? cooldownActiveText : "OFF"
             cooldownColor = useSignalCooldown ? (cooldownReady ? color.green : color.orange) : color.gray
-            table.cell(perfTable, 0, rowIndex, "Signal Cooldown", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, cooldownText, text_color=cooldownColor)
+            table.cell(perfTable, 0, rowIndex, "Signal Cooldown", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, cooldownText, text_color = cooldownColor)
             rowIndex += 1
 
             // Break down filter status logic for Pine Script v6 compliance
             filterText = finalLongSignal ? "LONG OK" : finalShortSignal ? "SHORT OK" : combinedLongSignal ? "LONG BLOCKED" : combinedShortSignal ? "SHORT BLOCKED" : "NONE"
             filterBlocked = combinedLongSignal or combinedShortSignal
             filterColor = finalLongSignal ? color.green : finalShortSignal ? color.red : filterBlocked ? color.orange : color.gray
-            table.cell(perfTable, 0, rowIndex, "Filter Status", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, filterText, text_color=filterColor)
+            table.cell(perfTable, 0, rowIndex, "Filter Status", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, filterText, text_color = filterColor)
             rowIndex += 1
 
         // Smart Exit Debug
@@ -858,14 +1051,14 @@ if barstate.islast
             smartExitMonitoring = useReversalExits or useEmaBreakExits
             smartExitText = smartExitSignal ? smartExitType : smartExitMonitoring ? "MONITORING" : "OFF"
             smartExitColor = smartExitSignal ? color.orange : smartExitMonitoring ? color.blue : color.gray
-            table.cell(perfTable, 0, rowIndex, "Smart Exit", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, smartExitText, text_color=smartExitColor)
+            table.cell(perfTable, 0, rowIndex, "Smart Exit", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, smartExitText, text_color = smartExitColor)
             rowIndex += 1
 
             reversalText = reversalDetected ? (bullishReversalDetected ? "BULLISH" : "BEARISH") : "NONE"
             reversalColor = bullishReversalDetected ? color.green : bearishReversalDetected ? color.red : color.gray
-            table.cell(perfTable, 0, rowIndex, "Reversal Alert", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, reversalText, text_color=reversalColor)
+            table.cell(perfTable, 0, rowIndex, "Reversal Alert", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, reversalText, text_color = reversalColor)
             rowIndex += 1
 
         // Pattern Debug
@@ -874,37 +1067,37 @@ if barstate.islast
             patternDebugText = hammerPattern ? "HAMMER" : strongBullPattern ? "STRONG-BULL" : strongBearPattern ? "STRONG-BEAR" : shootingStarPattern ? "SHOOTING" : dojiPattern ? "DOJI" : bullishEngulfing ? "BULL-ENG" : bearishEngulfing ? "BEAR-ENG" : "NO-MATCH"
             patternDetected = hammerPattern or strongBullPattern or strongBearPattern or shootingStarPattern or dojiPattern or bullishEngulfing or bearishEngulfing
             patternDebugColor = patternDetected ? color.green : color.orange
-            table.cell(perfTable, 0, rowIndex, "Pattern Debug", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, patternDebugText, text_color=patternDebugColor)
+            table.cell(perfTable, 0, rowIndex, "Pattern Debug", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, patternDebugText, text_color = patternDebugColor)
             rowIndex += 1
 
-            ratioText = candleRange > 0 ? "L:" + str.tostring(lowerShadow/candleRange, "#.##") + " B:" + str.tostring(candleBody/candleRange, "#.##") + " U:" + str.tostring(upperShadow/candleRange, "#.##") : "L:0.00 B:0.00 U:0.00"
-            table.cell(perfTable, 0, rowIndex, "Candle Ratios", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, ratioText, text_color=color.blue)
+            ratioText = candleRange > 0 ? "L:" + str.tostring(lowerShadow / candleRange, "#.##") + " B:" + str.tostring(candleBody / candleRange, "#.##") + " U:" + str.tostring(upperShadow / candleRange, "#.##") : "L:0.00 B:0.00 U:0.00"
+            table.cell(perfTable, 0, rowIndex, "Candle Ratios", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, ratioText, text_color = color.blue)
             rowIndex += 1
 
             volumeDebugText = volumeConfirmed ? "CONFIRMED" : volumeConfirmation ? "BLOCKED" : "BYPASSED"
             volumeDebugColor = volumeConfirmed ? color.green : volumeConfirmation ? color.red : color.blue
-            table.cell(perfTable, 0, rowIndex, "Volume Check", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, volumeDebugText, text_color=volumeDebugColor)
+            table.cell(perfTable, 0, rowIndex, "Volume Check", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, volumeDebugText, text_color = volumeDebugColor)
             rowIndex += 1
 
         // Position Management
         if showPosition
             posText = strategy.position_size > 0 ? "LONG" : strategy.position_size < 0 ? "SHORT" : "FLAT"
             posColor = strategy.position_size > 0 ? color.green : strategy.position_size < 0 ? color.red : color.gray
-            table.cell(perfTable, 0, rowIndex, "Position", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, posText, text_color=posColor)
+            table.cell(perfTable, 0, rowIndex, "Position", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, posText, text_color = posColor)
             rowIndex += 1
 
-            table.cell(perfTable, 0, rowIndex, "Daily Trades", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, str.tostring(dailyTrades) + "/" + str.tostring(maxDailyTrades), text_color=dailyTrades < maxDailyTrades ? color.green : color.red)
+            table.cell(perfTable, 0, rowIndex, "Daily Trades", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, str.tostring(dailyTrades) + "/" + str.tostring(maxDailyTrades), text_color = dailyTrades < maxDailyTrades ? color.green : color.red)
             rowIndex += 1
 
             trailText = useTrailingStop and trailingActive ? "ACTIVE" : useTrailingStop ? "WAITING" : "OFF"
             trailColor = useTrailingStop and trailingActive ? color.orange : useTrailingStop ? color.blue : color.gray
-            table.cell(perfTable, 0, rowIndex, "Trailing Stop", text_color=color.black)
-            table.cell(perfTable, 1, rowIndex, trailText, text_color=trailColor)
+            table.cell(perfTable, 0, rowIndex, "Trailing Stop", text_color = color.black)
+            table.cell(perfTable, 1, rowIndex, trailText, text_color = trailColor)
             rowIndex += 1
 
 //=====================================================================================================================
@@ -954,7 +1147,7 @@ if reversalDetected and volumeConfirmed and not smartExitSignal
 //=====================================================================================================================
 // 🧪 EXPERIMENTAL DEVELOPMENT NOTES
 //=====================================================================================================================
-// Development Status: v1.5 Confirmed Signal Only Strategy - Enhanced Filtering
+// Development Status: v1.6 Look-Ahead Bias Prevention & Enhanced Validation - Production Ready
 // Target Improvements:
 // 1. Enhanced trend filtering via EMA ribbon system
 // 2. Reduced false signals through multi-layer confirmation
@@ -964,14 +1157,15 @@ if reversalDetected and volumeConfirmed and not smartExitSignal
 // 6. ✅ Signal filtering system to prevent rapid-fire signals and overtrading
 // 7. ✅ NEW: Smart Exit System with reversal detection and EMA break exits
 //
-// Recent Updates (v1.5):
-// - 🎯 CONFIRMED SIGNAL ONLY: Strategy now exclusively trades confirmed (C) signals for maximum reliability
-// - 🔧 LOGIC CONSISTENCY: Removed raw signal paths from entry logic while maintaining early signal detection
-// - 📊 VISUAL CLARITY: Updated charts to show C=Confirmed, E=Early, R=Raw Reference signals
-// - 🚨 ALERT ACCURACY: Fixed alert messages to match actual trading behavior
-// - ⚡ PERFORMANCE: Optimized calculations and eliminated redundant operations
-// - 🛡️ ERROR HANDLING: Added comprehensive division-by-zero protection and error handling
-// - 📝 PINE SCRIPT v6: Full compliance with Pine Script v6 syntax requirements
+// Recent Updates (v1.6) - LOOK-AHEAD BIAS PREVENTION:
+// - ✅ ELIMINATED LOOK-AHEAD BIAS: Removed calc_on_every_tick and calc_on_order_fills dangerous settings
+// - ✅ HISTORICAL SESSION DETECTION: Fixed timenow usage with proper historical time-based logic
+// - ✅ COMPREHENSIVE DATA VALIDATION: Added 7-layer validation system to prevent bias and data issues
+// - ✅ REALISTIC TRANSACTION COSTS: Enhanced commission (0.1%) and slippage (2 ticks) for real-world conditions
+// - ✅ RED FLAG DETECTION: Automated detection of unrealistic performance metrics indicating bias
+// - ✅ ENHANCED RISK MANAGEMENT: Added drawdown monitoring, trade gap validation, and performance alerts
+// - ✅ PROFESSIONAL VALIDATION: Institutional-grade validation framework with performance status monitoring
+// - ✅ KNOWLEDGE BASE COMPLIANCE: Full adherence to look-ahead bias prevention best practices
 //
 // Key Features:
 // - ✅ Multi-path Early Entry System: 4 detection paths for maximum opportunity capture
@@ -980,12 +1174,18 @@ if reversalDetected and volumeConfirmed and not smartExitSignal
 // - ✅ Advanced Filtering: Cooldown system, signal strength, and market structure filters
 // - ✅ Risk Management: ATR-based positioning with trailing stops
 // - ✅ Comprehensive Debug: Real-time performance monitoring and signal analysis
+// - ✅ LOOK-AHEAD BIAS PREVENTION: Complete elimination of future data leakage
+// - ✅ VALIDATION FRAMEWORK: 7-layer data validation with red flag detection
+// - ✅ REALISTIC BACKTESTING: Proper transaction costs and historical data handling
 //
 // Critical Problems Solved:
 // - ✅ Reversal Exit Protection: Addresses $800+ adverse moves through pattern detection
 // - ✅ EMA Break Exits: Systematic exits when price breaks key support/resistance EMAs
 // - ✅ Early Warning System: Reversal alerts before position becomes at risk
 // - ✅ Configurable Sensitivity: User control over conservative vs aggressive exit timing
+// - ✅ LOOK-AHEAD BIAS ELIMINATION: Prevents unrealistic backtest performance from future data leakage
+// - ✅ REALISTIC PERFORMANCE EXPECTATIONS: Automated detection of suspicious metrics
+// - ✅ DATA INTEGRITY: Comprehensive validation ensures clean, reliable backtesting
 //
 // Testing Requirements:
 // - Comprehensive test suite validation ≥90%
@@ -994,4 +1194,7 @@ if reversalDetected and volumeConfirmed and not smartExitSignal
 // - Smart exit system effectiveness validation against known scenarios
 // - Risk reduction measurement (drawdown protection)
 // - Graduation criteria assessment for main repository
+// - ✅ LOOK-AHEAD BIAS TESTING: Verify no future data leakage in backtests
+// - ✅ RED FLAG MONITORING: Ensure performance metrics remain realistic
+// - ✅ OUT-OF-SAMPLE VALIDATION: Test on data not used for development
 //=====================================================================================================================

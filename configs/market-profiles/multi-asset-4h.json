@@ -1,0 +1,169 @@
+{
+  "profile_name": "Multi-Asset 4H Swing Trading",
+  "description": "Optimized parameters for 4-hour swing trading across multiple asset classes",
+  "version": "1.0.0",
+  "last_updated": "2024-07-XX",
+  
+  "market_characteristics": {
+    "asset_class": "multi_asset",
+    "supported_assets": ["forex", "indices", "commodities", "crypto"],
+    "timeframe": "4h",
+    "trading_style": "swing",
+    "market_hours": "varies_by_asset",
+    "volatility_profile": "medium",
+    "liquidity_profile": "high"
+  },
+  
+  "technical_parameters": {
+    "macd": {
+      "fast_length": 12,
+      "slow_length": 26,
+      "signal_length": 9,
+      "rationale": "Traditional MACD settings for swing trading across assets"
+    },
+    "market_structure": {
+      "enabled": true,
+      "choch_detection": true,
+      "bos_detection": true,
+      "idm_detection": true,
+      "methodology": "LuxAlgo_based"
+    },
+    "ema": {
+      "fast_ema": 21,
+      "slow_ema": 55,
+      "trend_ema": 200,
+      "rationale": "Multi-timeframe trend identification"
+    },
+    "atr": {
+      "length": 14,
+      "stop_multiplier_range": [1.5, 3.0],
+      "target_multiplier_range": [2.0, 4.0],
+      "rationale": "Dynamic multipliers based on market volatility"
+    }
+  },
+  
+  "risk_management": {
+    "max_risk_per_trade": 2.0,
+    "max_daily_risk": 6.0,
+    "max_weekly_risk": 15.0,
+    "position_sizing_method": "atr_based_dynamic",
+    "stop_loss": {
+      "type": "market_structure_based",
+      "fallback": "atr_multiple",
+      "atr_multiplier": 2.0,
+      "trailing": true,
+      "trail_activation": 1.0
+    },
+    "take_profit": {
+      "type": "risk_reward_ratio",
+      "ratio": 2.0,
+      "partial_profits": [
+        {"level": 1.0, "percentage": 30},
+        {"level": 1.5, "percentage": 40}
+      ]
+    }
+  },
+  
+  "filters": {
+    "trend_filter": {
+      "enabled": true,
+      "method": "ema_and_market_structure",
+      "strength_threshold": 0.8
+    },
+    "macd_filter": {
+      "enabled": true,
+      "require_histogram_confirmation": true,
+      "require_signal_alignment": true
+    },
+    "time_filter": {
+      "enabled": true,
+      "avoid_rollover": true,
+      "major_session_preference": true
+    },
+    "volatility_filter": {
+      "enabled": true,
+      "adaptive_threshold": true,
+      "min_atr_percentile": 25,
+      "max_atr_percentile": 85
+    }
+  },
+  
+  "asset_specific_adjustments": {
+    "forex": {
+      "session_awareness": true,
+      "carry_cost_consideration": true,
+      "spread_adjustment": true,
+      "major_pairs_priority": true
+    },
+    "indices": {
+      "gap_handling": true,
+      "earnings_avoidance": false,
+      "correlation_monitoring": true
+    },
+    "commodities": {
+      "storage_cost_awareness": true,
+      "seasonal_patterns": true,
+      "supply_demand_factors": true
+    },
+    "crypto": {
+      "24_7_trading": true,
+      "higher_volatility_tolerance": true,
+      "weekend_behavior": true
+    }
+  },
+  
+  "performance_targets": {
+    "win_rate": {
+      "target": 65.0,
+      "minimum": 60.0
+    },
+    "profit_factor": {
+      "target": 1.8,
+      "minimum": 1.3
+    },
+    "max_drawdown": {
+      "target": 12.0,
+      "maximum": 20.0
+    },
+    "sharpe_ratio": {
+      "target": 1.2,
+      "minimum": 0.8
+    }
+  },
+  
+  "advanced_features": {
+    "market_structure_integration": {
+      "enabled": true,
+      "choch_entries": true,
+      "bos_confirmations": true,
+      "liquidity_zones": true
+    },
+    "multi_asset_correlation": {
+      "enabled": true,
+      "max_correlated_positions": 2,
+      "correlation_threshold": 0.7
+    },
+    "adaptive_parameters": {
+      "enabled": true,
+      "volatility_adjustment": true,
+      "market_regime_detection": true
+    }
+  },
+  
+  "testing_configuration": {
+    "backtest_period": "2 years",
+    "out_of_sample_period": "6 months",
+    "walk_forward_windows": 8,
+    "monte_carlo_runs": 1000,
+    "asset_specific_testing": true,
+    "cross_asset_validation": true
+  },
+  
+  "deployment_requirements": {
+    "minimum_test_pass_rate": 90.0,
+    "required_trade_count_per_asset": 50,
+    "stability_period": "60 days",
+    "cross_asset_validation": true,
+    "correlation_monitoring": true
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "tradingview",
+  "version": "0.0.01-Alpha",
+  "description": "educational trading strategies",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iamrichardD/tradingview.git"
+  },
+  "author": "iamrichardD <https://github.com/iamrichardD>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/iamrichardD/tradingview/issues"
+  },
+  "homepage": "https://github.com/iamrichardD/tradingview#readme",
+  "devDependencies": {
+    "@iamrichardd/claude-gemini-mcp-server": "github:iamrichardd/claude-gemini-mcp-server"
+  },
+  "dependencies": {
+    "mcp-server-pinescript": "github:iamrichardD/mcp-server-pinescript",
+    "pinescriptproject1": "github:CyberBOB07/pinescript-mcp-server"
+  }
+}

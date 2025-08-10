@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "pinscript-docs": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "./node_modules/mcp-server-pinescript/index.js"
+      ],
+      "env": {}
+    }
+  }
+}
