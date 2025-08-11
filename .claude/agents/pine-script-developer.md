@@ -1,7 +1,7 @@
 ---
 name: pine-script-developer
 description: Expert Pine Script developer for TradingView. Use PROACTIVELY for creating indicators, strategies, custom technical analysis tools, backtesting, and optimizing Pine Script code. MUST BE USED for all TradingView and Pine Script related tasks.
-tools: Read, Write, Edit, MultiEdit, Bash, Grep, Glob, WebFetch, pinscript-docs
+tools: Read, Write, Edit, MultiEdit, Bash, Grep, Glob, WebFetch, pinescript-docs
 type: expert
 created: 2025-08-08
 related: [pinescript-v6-compliance-specialist, financial-expert]

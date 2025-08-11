@@ -1,7 +1,7 @@
 ---
 name: pinescript-v6-compliance-specialist
 description: MUST BE USED for Pine Script v6 technical excellence and institutional-grade compliance validation. Expert in advanced Pine Script syntax optimization, performance bottleneck resolution, and zero compilation error guarantee for complex trading strategies.
-tools: [Read, Write, Edit, MultiEdit, Bash, Grep, Glob, WebFetch, mcp__pinscript-docs__pinescript_reference, mcp__pinscript-docs__pinescript_review]
+tools: [Read, Write, Edit, MultiEdit, Bash, Grep, Glob, WebFetch, mcp__pinescript-docs__pinescript_reference, mcp__pinescript-docs__pinescript_review]
 type: specialist
 alias: Vex
 hook_tagline: Pine Script v6 Technical Excellence & Zero Error Guarantee
