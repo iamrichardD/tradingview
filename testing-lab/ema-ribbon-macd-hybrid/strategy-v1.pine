@@ -1,4 +1,4 @@
-// EMA Ribbon + MACD Hybrid Strategy v1.5 - EXPERIMENTAL
+// EMA Ribbon + MACD Hybrid Strategy v1.6 - ENHANCED REVERSAL EXIT SYSTEM
 // Multi-layer signal system combining EMA ribbon trend analysis with MACD momentum
 // Transformation target: Enhanced trend filtering + reduced false signals
 //
@@ -134,19 +134,29 @@ trailingActivation = input.float(0.8, "Activation %", minval = 0.3, maxval = 1.5
 trailingDistance = input.float(0.4, "Trailing Distance %", minval = 0.1, maxval = 0.8, step = 0.1, group = grpTrailing)
 
 //=====================================================================================================================
-// 🚪 SMART EXIT SYSTEM - PRIORITY 2 (STRATEGY TUNING)
+// 🚪 ENHANCED SMART EXIT SYSTEM - PRIORITY 1 (RISK MANAGEMENT)
 //=====================================================================================================================
-grpSmartExit = "🚪 Smart Exit System"
+grpSmartExit = "🚪 Enhanced Smart Exit System"
 useReversalExits = input.bool(true, "Enable Reversal Exits", group = grpSmartExit,
      tooltip = "Auto-exit on technical reversal patterns")
 useEmaBreakExits = input.bool(true, "Enable EMA Break Exits", group = grpSmartExit,
      tooltip = "Exit when price breaks key EMA levels")
+useAdvancedReversals = input.bool(true, "Enable Advanced Reversal Patterns", group = grpSmartExit,
+     tooltip = "Enhanced pattern detection for major reversal scenarios")
 reversalSensitivity = input.float(0.7, "Reversal Sensitivity", minval = 0.3, maxval = 1.0, step = 0.1,
      group = grpSmartExit, tooltip = "0.3=Conservative, 1.0=Aggressive")
-volumeConfirmation = input.bool(false, "Require Volume Confirmation", group = grpSmartExit,
-     tooltip = "Reversal must have volume > 1.2x average")
-emaExitLevel = input.string("Fast EMA", "EMA Exit Level", options = ["Fast EMA", "Pivot EMA", "Slow EMA"],
+volumeConfirmation = input.bool(true, "Require Volume Confirmation", group = grpSmartExit,
+     tooltip = "Reversal must have volume > 1.2x average (RECOMMENDED)")
+emaExitLevel = input.string("Pivot EMA", "EMA Exit Level", options = ["Fast EMA", "Pivot EMA", "Slow EMA"],
      group = grpSmartExit, tooltip = "Which EMA break triggers exit")
+useDynamicSupport = input.bool(true, "Dynamic Support/Resistance", group = grpSmartExit,
+     tooltip = "Use swing highs/lows for exit levels")
+supportLookback = input.int(10, "Support/Resistance Lookback", minval = 5, maxval = 30, group = grpSmartExit,
+     tooltip = "Bars to look back for swing levels")
+riskAdjustedExits = input.bool(true, "Risk-Adjusted Exits", group = grpSmartExit,
+     tooltip = "Use ATR-based exit thresholds for volatility adjustment")
+atrMultiplier = input.float(1.5, "ATR Exit Multiplier", minval = 0.5, maxval = 3.0, step = 0.1,
+     group = grpSmartExit, tooltip = "ATR multiplier for volatility-adjusted exits")
 
 //=====================================================================================================================
 // 🏗️ SMA CONTEXT LEVELS - PRIORITY 3 (ADVANCED)
