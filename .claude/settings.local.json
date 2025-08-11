@@ -2,14 +2,16 @@
   "permissions": {
     "allow": [
       "mcp__claude-gemini-pair-programmer__gemini_code_review",
-      "mcp__pinscript-docs__pinescript_reference",
-      "mcp__pinscript-docs__pinescript_review",
+      "mcp__pinescript-docs__pinescript_reference",
+      "mcp__pinescript-docs__pinescript_review",
       "Bash(awk:*)",
       "Bash(git add:*)",
       "Bash(git reset:*)",
       "Bash(git rm:*)",
       "Bash(git config:*)",
-      "Bash(npm run technical-writer -- --task=\"Transform TradingView project documentation to institutional-grade strategic ecosystem with 12-agent integration. PROJECT CONTEXT: /home/rdelgado/Development/tradingview - Comprehensive enhancement of README.md, CLAUDE.md, GEMINI.md plus creation of AGENT_UTILIZATION_GUIDE.md and STRATEGIC_WORKFLOWS.md. REQUIREMENTS: Integration of 12-agent ecosystem capabilities, Implementation Priority Matrix methodology, institutional-grade strategic documentation standards. TARGET: Transform from technical guidance to strategic orchestration documentation. COORDINATION: Multi-agent collaboration patterns with specialized domain expertise integration.\")"
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   },
