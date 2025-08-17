@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "pinscript-docs": {
+    "pinescript-docs": {
       "type": "stdio",
       "command": "node",
       "args": [

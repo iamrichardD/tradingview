@@ -43,7 +43,7 @@ type TradingState
 
 var TradingState state = TradingState.new()
 
-// Advanced position management state
+// Advanced _position management state
 type PositionState
     float entryPrice = na
     float stopLossPrice = na
@@ -160,7 +160,8 @@ useEmaBreakExits = input.bool(true, "Enable EMA Break Exits", group = grpSmartEx
 useAdvancedReversals = input.bool(true, "Enable Advanced Reversal Patterns", group = grpSmartExit)
 reversalSensitivity = input.float(0.7, "Reversal Sensitivity", minval = 0.3, maxval = 1.0, group = grpSmartExit)
 volumeConfirmation = input.bool(true, "Require Volume Confirmation", group = grpSmartExit)
-emaExitLevel = input.string("Pivot EMA", "EMA Exit Level", options = ["Fast EMA", "Pivot EMA", "Slow EMA"], group = grpSmartExit)
+emaExitLevel = input.string("Pivot EMA", "EMA Exit Level", 
+     options = ["Fast EMA", "Pivot EMA", "Slow EMA"], group = grpSmartExit)
 
 //=====================================================================================================================
 // ✅ ENHANCED DATA VALIDATION - CIRCUIT BREAKER INTEGRATION
@@ -251,14 +252,14 @@ signalPrev2 = signalLine[2]
 // 🌐 MULTI-TIMEFRAME CONTEXT ANALYSIS
 //=====================================================================================================================
 // Higher timeframe analysis for institutional alignment
-htf15_ema21 = useMultiTimeframe ? request.security(syminfo.tickerid, mtfTimeframe1, ta.ema(close, 21)) : na
-htf1h_ema21 = useMultiTimeframe ? request.security(syminfo.tickerid, mtfTimeframe2, ta.ema(close, 21)) : na
+htf15Ema21 = useMultiTimeframe ? request.security(syminfo.tickerid, mtfTimeframe1, ta.ema(close, 21)) : na
+htf1hEma21 = useMultiTimeframe ? request.security(syminfo.tickerid, mtfTimeframe2, ta.ema(close, 21)) : na
 
 // Multi-timeframe alignment scoring
-if useMultiTimeframe and not na(htf15_ema21) and not na(htf1h_ema21)
+if useMultiTimeframe and not na(htf15Ema21) and not na(htf1hEma21)
     mtfAlignment = 0
-    mtfAlignment += close > htf15_ema21 ? 1 : -1
-    mtfAlignment += close > htf1h_ema21 ? 1 : -1
+    mtfAlignment += close > htf15Ema21 ? 1 : -1
+    mtfAlignment += close > htf1hEma21 ? 1 : -1
     mtfAlignment += fastEma > pivotEma ? 1 : -1
     mtfAlignment += pivotEma > slowEma ? 1 : -1
     market.strongMTFAlignment := math.abs(mtfAlignment) >= minMTFAlignment
@@ -368,8 +369,10 @@ macdSignalCrossUp = useSignalCross and macdPrev > signalPrev and macdPrev2 <= si
 macdSignalCrossDown = useSignalCross and macdPrev < signalPrev and macdPrev2 >= signalPrev2
 
 // Enhanced momentum detection
-macdMomentumUp = useMomentumSignals and macdPrev > signalPrev and (macdPrev - macdPrev2) > momentumThreshold and macdPrev < 0
-macdMomentumDown = useMomentumSignals and macdPrev < signalPrev and (macdPrev - macdPrev2) < -momentumThreshold and macdPrev > 0
+macdMomentumUp = useMomentumSignals and macdPrev > signalPrev and 
+     (macdPrev - macdPrev2) > momentumThreshold and macdPrev < 0
+macdMomentumDown = useMomentumSignals and macdPrev < signalPrev and 
+     (macdPrev - macdPrev2) < -momentumThreshold and macdPrev > 0
 
 //=====================================================================================================================
 // 💰 VOLATILITY-ADAPTIVE POSITION SIZING
@@ -498,9 +501,9 @@ if strategy.position_size > 0 and useTrailingStop
         position.trailingActive := true
     
     if position.trailingActive
-        trailingDistance_dynamic = useDynamicTrailing ? 
+        trailingDistanceDynamic = useDynamicTrailing ? 
              trailingDistance * atrRatio : trailingDistance
-        newTrailingStop = position.highestPrice * (1 - trailingDistance_dynamic / 100)
+        newTrailingStop = position.highestPrice * (1 - trailingDistanceDynamic / 100)
         if newTrailingStop > position.trailingStopPrice
             position.trailingStopPrice := newTrailingStop
 
@@ -513,9 +516,9 @@ if strategy.position_size < 0 and useTrailingStop
         position.trailingActive := true
     
     if position.trailingActive
-        trailingDistance_dynamic = useDynamicTrailing ? 
+        trailingDistanceDynamic = useDynamicTrailing ? 
              trailingDistance * atrRatio : trailingDistance
-        newTrailingStop = position.lowestPrice * (1 + trailingDistance_dynamic / 100)
+        newTrailingStop = position.lowestPrice * (1 + trailingDistanceDynamic / 100)
         if newTrailingStop < position.trailingStopPrice
             position.trailingStopPrice := newTrailingStop
 
@@ -573,9 +576,9 @@ macdColor = market.volatilityRegime == "HIGH" ? color.orange :
      market.volatilityRegime == "NORMAL" ? color.blue : color.purple
 signalColor = macdLine > signalLine ? color.lime : color.red
 
-macdPlot = plot(macdLine, title = "Dynamic MACD", color = macdColor, linewidth = 3)
-signalPlot = plot(signalLine, title = "Signal Line", color = signalColor, linewidth = 2)
-plot(histogramLine, title = "Histogram", color = color.gray, style = plot.style_histogram)
+macdPlot = plot(macdLine, title = "Dynamic MACD Line", color = macdColor, linewidth = 3)
+signalPlot = plot(signalLine, title = "MACD Signal Line", color = signalColor, linewidth = 2)
+plot(histogramLine, title = "MACD Histogram", color = color.gray, style = plot.style_histogram)
 hline(0, "Zero Line", color.black, linestyle = hline.style_solid, linewidth = 2)
 
 // MACD fill with regime coloring
@@ -608,7 +611,7 @@ bgcolor(positionColor, title = "Position Status")
 // Signal quality indicator
 qualityLevel = useInstitutionalFiltering ? market.signalScore / 10.0 : 0.5
 qualityColor = qualityLevel >= 0.7 ? color.lime : qualityLevel >= 0.5 ? color.yellow : color.red
-plot(qualityLevel, title = "Signal Quality", color = qualityColor, linewidth = 2, style = plot.style_area)
+plot(qualityLevel, title = "Institutional Signal Quality", color = qualityColor, linewidth = 2, style = plot.style_area)
 
 //=====================================================================================================================
 // ⚠️ INSTITUTIONAL PERFORMANCE MONITORING
@@ -676,16 +679,16 @@ if barstate.islast
     
     // Volatility regime
     table.cell(perfTable, 0, rowIndex, "Vol Regime", text_color = color.black)
-    regimeColor_table = market.volatilityRegime == "HIGH" ? color.orange : 
+    regimeColorTable = market.volatilityRegime == "HIGH" ? color.orange : 
          market.volatilityRegime == "NORMAL" ? color.blue : color.purple
-    table.cell(perfTable, 1, rowIndex, market.volatilityRegime, text_color = regimeColor_table)
+    table.cell(perfTable, 1, rowIndex, market.volatilityRegime, text_color = regimeColorTable)
     rowIndex += 1
     
     // Signal quality
     table.cell(perfTable, 0, rowIndex, "Signal Quality", text_color = color.black)
     qualityText = str.tostring(market.signalScore) + "/10"
-    qualityColor_table = market.signalScore >= 7 ? color.green : market.signalScore >= 5 ? color.orange : color.red
-    table.cell(perfTable, 1, rowIndex, qualityText, text_color = qualityColor_table)
+    qualityColorTable = market.signalScore >= 7 ? color.green : market.signalScore >= 5 ? color.orange : color.red
+    table.cell(perfTable, 1, rowIndex, qualityText, text_color = qualityColorTable)
     rowIndex += 1
     
     // MTF Alignment
@@ -697,7 +700,8 @@ if barstate.islast
     
     // Dynamic parameters
     table.cell(perfTable, 0, rowIndex, "MACD Params", text_color = color.black)
-    paramText = str.tostring(market.dynamicFast) + "," + str.tostring(market.dynamicSlow) + "," + str.tostring(market.dynamicSignal)
+    paramText = str.tostring(market.dynamicFast) + "," + str.tostring(market.dynamicSlow) + 
+         "," + str.tostring(market.dynamicSignal)
     table.cell(perfTable, 1, rowIndex, paramText, text_color = color.blue)
     rowIndex += 1
 
