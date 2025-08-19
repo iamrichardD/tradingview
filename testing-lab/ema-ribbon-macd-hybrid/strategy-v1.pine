@@ -557,10 +557,8 @@ isEarlyShortSignal = combinedEarlyShort and combinedShortSignal
 isConfirmedLongSignal = upgradedStandardLong and combinedLongSignal
 isConfirmedShortSignal = upgradedStandardShort and combinedShortSignal
 
-effectiveLongCooldown = (isEarlyLongSignal and not isConfirmedLongSignal) ?
-     earlyCooldownBars : standardCooldownBars
-effectiveShortCooldown = (isEarlyShortSignal and not isConfirmedShortSignal) ?
-     earlyCooldownBars : standardCooldownBars
+effectiveLongCooldown = (isEarlyLongSignal and not isConfirmedLongSignal) ? earlyCooldownBars : standardCooldownBars
+effectiveShortCooldown = (isEarlyShortSignal and not isConfirmedShortSignal) ? earlyCooldownBars : standardCooldownBars
 
 // STEP 4: Calculate cooldown filters (no circular dependency)
 longCooldownOk = not useSignalCooldown or barsFromLastLong >= effectiveLongCooldown or

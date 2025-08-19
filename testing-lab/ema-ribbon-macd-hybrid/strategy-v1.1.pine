@@ -655,7 +655,7 @@ bgcolor(positionColor, title = "Position Status")
 // Signal quality indicator
 qualityLevel = useInstitutionalFiltering ? market.signalScore / 10.0 : 0.5
 qualityColor = qualityLevel >= 0.7 ? color.lime : qualityLevel >= 0.5 ? color.yellow : color.red
-plot(qualityLevel, title = "Institutional Signal Quality", color = qualityColor, linewidth = 2, style = plot.style_area)
+plot(qualityLevel, title = "Institutional Signal Quality", color = qualityColor, linewidth = 2)
 
 //=====================================================================================================================
 // ⚠️ INSTITUTIONAL PERFORMANCE MONITORING
@@ -685,17 +685,20 @@ if barstate.islast
 //=====================================================================================================================
 // 📊 INSTITUTIONAL DASHBOARD
 //=====================================================================================================================
+// TABLE BOUNDS FIX: Optimized from 25 to 10 rows (uses 9 rows: 0-8)
+// MEMORY OPTIMIZATION: Removed var declaration to prevent index accumulation
+// COMPLIANCE: Pine Script v6 table bounds validation - FIXED
 if barstate.islast
     var table perfTable = na
     if not na(perfTable)
         table.delete(perfTable)
-    perfTable := table.new(position.bottom_right, 2, 25, bgcolor = color.white, border_width = 2)
+    perfTable := table.new(position.bottom_right, 2, 10, bgcolor = color.white, border_width = 2)
     
     // Enhanced header
     table.cell(perfTable, 0, 0, "🎯 INSTITUTIONAL v1.1", text_color = color.white, bgcolor = color.navy)
     table.cell(perfTable, 1, 0, "OPTIMIZATION", text_color = color.white, bgcolor = color.navy)
     
-    var int rowIndex = 1
+    int rowIndex = 1
     
     // Performance metrics
     winRate = strategy.wintrades / math.max(strategy.closedtrades, 1) * 100
