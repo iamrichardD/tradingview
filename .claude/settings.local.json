@@ -12,7 +12,9 @@
       "Bash(cat:*)",
       "Bash(grep:*)",
       "Bash(find:*)",
-      "Bash(git tag:*)"
+      "Bash(git tag:*)",
+      "Bash(git push:*)",
+      "mcp__pinescript-docs__syntax_compatibility_validation"
     ],
     "deny": []
   },

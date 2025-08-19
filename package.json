@@ -16,7 +16,6 @@
     "@iamrichardd/claude-gemini-mcp-server": "github:iamrichardd/claude-gemini-mcp-server"
   },
   "dependencies": {
-    "mcp-server-pinescript": "github:iamrichardD/mcp-server-pinescript",
-    "pinescriptproject1": "github:CyberBOB07/pinescript-mcp-server"
+    "mcp-server-pinescript": "github:iamrichardD/mcp-server-pinescript#v3.3.1"
   }
 }
