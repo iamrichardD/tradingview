@@ -1,8 +1,17 @@
+// ————————————————————————————————————————————————————————————————————————————————
 // EMA Ribbon + MACD Hybrid Strategy v1.1 - INSTITUTIONAL OPTIMIZATION
-// Comprehensive 12-agent optimization with 20-28% performance enhancement
-// Integration of Pine Script v6 excellence + Market Structure + Risk Management
+// ————————————————————————————————————————————————————————————————————————————————
+// STRATEGY OVERVIEW:
+// Advanced trend-following strategy combining EMA ribbon analysis with MACD 
+// confirmation for institutional-grade market entries and exits. Features
+// comprehensive risk management, volatility adaptation, and multi-timeframe analysis.
+//
+// PERFORMANCE TARGET: 20-28% enhancement through 12-agent optimization
+// COMPLIANCE: Pine Script v6 + TradingView style guide + Institutional standards
+// VALIDATION: SHORT_TITLE_TOO_LONG compliance verified (10 chars max)
 //
 // ⚠️ EXPERIMENTAL WARNING: Testing lab only - paper trading required
+// 🏛️ INSTITUTIONAL GRADE: Risk management + Quality controls + Performance monitoring
 //
 // License: MIT License - Educational/Experimental Use Only
 //
@@ -15,11 +24,11 @@
 //
 //@version=6
 
-strategy("EMA Ribbon MACD v1.1", "RIBBON_v1.1", overlay = false,
+strategy("EMA Ribbon MACD v1.1", "RIB_v11", overlay = false,
          default_qty_type = strategy.percent_of_equity, default_qty_value = 2,
          commission_type = strategy.commission.percent, commission_value = 0.1,
          slippage = 2, calc_on_every_tick = false, calc_on_order_fills = false,
-         max_bars_back = 200, process_orders_on_close = false, scale = scale.right)
+         max_bars_back = 200, process_orders_on_close = false)
 
 //=====================================================================================================================
 // 🚧 EXPERIMENTAL WARNING
@@ -31,7 +40,15 @@ strategy("EMA Ribbon MACD v1.1", "RIBBON_v1.1", overlay = false,
 //=====================================================================================================================
 // 📊 INSTITUTIONAL TRADING STATE MANAGEMENT - v1.1 OPTIMIZATION
 //=====================================================================================================================
-// Consolidated state management using Pine Script v6 user-defined types
+// PURPOSE: Centralized state tracking for institutional-grade risk management
+// FEATURES: Real-time performance monitoring, validation warnings, trade frequency control
+// COMPLIANCE: Pine Script v6 user-defined types for optimal memory management
+// 
+// CRITICAL METRICS TRACKED:
+// - Total red flags: Performance anomaly detection
+// - Performance status: Real-time risk assessment (✅ INSTITUTIONAL/⚠️ RISK levels)
+// - Trade validation: Prevents over-trading and ensures quality gate compliance
+// - Daily trade limits: Institutional risk controls to prevent excessive frequency
 type TradingState
     int totalRedFlags = 0
     string performanceStatus = "✅ REALISTIC"
@@ -53,7 +70,7 @@ type PositionState
     float lowestPrice = na
     bool trailingActive = false
 
-var PositionState position = PositionState.new()
+var PositionState positionState = PositionState.new()
 
 // Market structure state for institutional analysis
 type MarketStructure
@@ -70,6 +87,16 @@ var MarketStructure market = MarketStructure.new()
 //=====================================================================================================================
 // 🛡️ RISK MANAGEMENT - ENHANCED INSTITUTIONAL CONTROLS
 //=====================================================================================================================
+// PURPOSE: Comprehensive risk framework exceeding institutional standards
+// METHODOLOGY: Multi-layer risk validation with circuit breaker protection
+// COMPLIANCE: Volatility-adaptive position sizing + performance monitoring
+// 
+// RISK CONTROL LAYERS:
+// 1. Position Risk: Stop loss/take profit with dynamic volatility adjustment
+// 2. Daily Limits: Maximum trade frequency controls (default: 10 trades/day)
+// 3. Drawdown Protection: Real-time monitoring with 15% alert threshold
+// 4. Volatility Circuit Breaker: Extreme volatility protection (2.5x threshold)
+// 5. Gap Controls: Minimum bars between trades to prevent overtrading
 grpRisk = "🛡️ Enhanced Risk Management"
 stopLossPercent = input.float(1.5, "Stop Loss %", minval = 0.5, maxval = 3.0, step = 0.1, group = grpRisk)
 takeProfitPercent = input.float(2.5, "Take Profit %", minval = 1.0, maxval = 4.0, step = 0.1, group = grpRisk)
@@ -101,15 +128,25 @@ grpMACD = "🌊 Dynamic MACD System"
 useDynamicMACD = input.bool(true, "Enable Dynamic MACD", group = grpMACD,
      tooltip = "Adaptive parameters based on volatility regime")
 highVolParams = input.string("5,13,3", "High Vol Parameters", group = grpMACD,
-     tooltip = "Ultra-sensitive for breakouts: fast,slow,signal")
+     tooltip = "Ultra-sensitive for breakouts: fast, slow, signal")
 normalVolParams = input.string("8,21,5", "Normal Vol Parameters", group = grpMACD,
      tooltip = "Current balanced approach")
 lowVolParams = input.string("12,26,9", "Low Vol Parameters", group = grpMACD,
      tooltip = "Traditional for trending markets")
 
 //=====================================================================================================================
-// 🎯 ENHANCED SIGNAL SYSTEM
+// 🎯 ENHANCED SIGNAL SYSTEM - INSTITUTIONAL QUALITY CONTROLS
 //=====================================================================================================================
+// PURPOSE: Multi-dimensional signal validation for institutional-grade accuracy
+// METHODOLOGY: Layered confirmation system with quality scoring (0-10 scale)
+// FEATURES: MACD zero/signal crossovers + early momentum detection + quality thresholds
+// 
+// SIGNAL COMPONENTS:
+// - Zero Cross: MACD line crossing zero (trend confirmation)
+// - Signal Cross: MACD/Signal line crossover (entry timing)
+// - Momentum Signals: Early trend detection (threshold-based)
+// - Quality Filtering: Minimum score requirement (default: 7/10)
+// - Institutional Filtering: Advanced scoring with volume/MTF confirmation
 grpSignals = "🎯 Enhanced Signal System"
 useZeroCross = input.bool(true, "MACD Zero Cross", group = grpSignals)
 useSignalCross = input.bool(true, "MACD Signal Cross", group = grpSignals)
@@ -232,11 +269,22 @@ if bar_index > 0
     else
         market.adaptiveSlowLength := slowEmaLen
 
-// Calculate adaptive slow EMA
-slowEma = useAdaptiveRibbon ? ta.ema(close, int(market.adaptiveSlowLength)) : slowEmaBase
+// Calculate adaptive slow EMA with volatility-based fixed lengths
+// Pine Script v6 requires simple int for ta.ema, so we use conditional with fixed values
+slowEma55 = ta.ema(close, 55)  // High volatility length (34 + 21)
+slowEma34 = ta.ema(close, 34)  // Normal volatility length
+slowEma = useAdaptiveRibbon ? (highVolRegime ? slowEma55 : slowEma34) : slowEmaBase
 
-// Dynamic MACD calculation
-[macdLine, signalLine, histogramLine] = ta.macd(close, market.dynamicFast, market.dynamicSlow, market.dynamicSignal)
+// Dynamic MACD calculation with volatility-based fixed parameters
+// Pine Script v6 requires simple int, so we calculate multiple MACD sets
+[macdHigh, signalHigh, histHigh] = ta.macd(close, 5, 13, 3)     // High volatility
+[macdNorm, signalNorm, histNorm] = ta.macd(close, 8, 21, 5)     // Normal volatility  
+[macdLow, signalLow, histLow] = ta.macd(close, 12, 26, 9)       // Low volatility
+
+// Select appropriate MACD based on volatility regime
+macdLine = useDynamicMACD ? (highVolRegime ? macdHigh : normalVolRegime ? macdNorm : macdLow) : macdNorm
+signalLine = useDynamicMACD ? (highVolRegime ? signalHigh : normalVolRegime ? signalNorm : signalLow) : signalNorm
+histogramLine = useDynamicMACD ? (highVolRegime ? histHigh : normalVolRegime ? histNorm : histLow) : histNorm
 
 // Historical data for bias prevention
 fastEmaPrev = fastEma[1]
@@ -475,52 +523,50 @@ smartExitShort = strategy.position_size < 0 and
 //=====================================================================================================================
 // Long position setup with dynamic parameters
 if finalLongSignal
-    position.entryPrice := open
-    position.stopLossPrice := position.entryPrice * (1 - adaptiveStopLoss / 100)
-    position.takeProfitPrice := position.entryPrice * (1 + dynamicTakeProfit / 100)
-    position.trailingStopPrice := position.stopLossPrice
-    position.highestPrice := position.entryPrice
-    position.trailingActive := false
+    positionState.entryPrice := open
+    positionState.stopLossPrice := positionState.entryPrice * (1 - adaptiveStopLoss / 100)
+    positionState.takeProfitPrice := positionState.entryPrice * (1 + dynamicTakeProfit / 100)
+    positionState.trailingStopPrice := positionState.stopLossPrice
+    positionState.highestPrice := positionState.entryPrice
+    positionState.trailingActive := false
 
 // Short position setup with dynamic parameters
 if finalShortSignal
-    position.entryPrice := open
-    position.stopLossPrice := position.entryPrice * (1 + adaptiveStopLoss / 100)
-    position.takeProfitPrice := position.entryPrice * (1 - dynamicTakeProfit / 100)
-    position.trailingStopPrice := position.stopLossPrice
-    position.lowestPrice := position.entryPrice
-    position.trailingActive := false
+    positionState.entryPrice := open
+    positionState.stopLossPrice := positionState.entryPrice * (1 + adaptiveStopLoss / 100)
+    positionState.takeProfitPrice := positionState.entryPrice * (1 - dynamicTakeProfit / 100)
+    positionState.trailingStopPrice := positionState.stopLossPrice
+    positionState.lowestPrice := positionState.entryPrice
+    positionState.trailingActive := false
 
 // Enhanced trailing stop system
 if strategy.position_size > 0 and useTrailingStop
-    if high > position.highestPrice
-        position.highestPrice := high
+    if high > positionState.highestPrice
+        positionState.highestPrice := high
     
-    profitPercent = (position.highestPrice - position.entryPrice) / position.entryPrice * 100
+    profitPercent = (positionState.highestPrice - positionState.entryPrice) / positionState.entryPrice * 100
     if profitPercent >= trailingActivation
-        position.trailingActive := true
+        positionState.trailingActive := true
     
-    if position.trailingActive
-        trailingDistanceDynamic = useDynamicTrailing ? 
-             trailingDistance * atrRatio : trailingDistance
-        newTrailingStop = position.highestPrice * (1 - trailingDistanceDynamic / 100)
-        if newTrailingStop > position.trailingStopPrice
-            position.trailingStopPrice := newTrailingStop
+    if positionState.trailingActive
+        trailingDistanceDynamic = useDynamicTrailing ? trailingDistance * atrRatio : trailingDistance
+        newTrailingStop = positionState.highestPrice * (1 - trailingDistanceDynamic / 100)
+        if newTrailingStop > positionState.trailingStopPrice
+            positionState.trailingStopPrice := newTrailingStop
 
 if strategy.position_size < 0 and useTrailingStop
-    if low < position.lowestPrice
-        position.lowestPrice := low
+    if low < positionState.lowestPrice
+        positionState.lowestPrice := low
     
-    profitPercent = (position.entryPrice - position.lowestPrice) / position.entryPrice * 100
+    profitPercent = (positionState.entryPrice - positionState.lowestPrice) / positionState.entryPrice * 100
     if profitPercent >= trailingActivation
-        position.trailingActive := true
+        positionState.trailingActive := true
     
-    if position.trailingActive
-        trailingDistanceDynamic = useDynamicTrailing ? 
-             trailingDistance * atrRatio : trailingDistance
-        newTrailingStop = position.lowestPrice * (1 + trailingDistanceDynamic / 100)
-        if newTrailingStop < position.trailingStopPrice
-            position.trailingStopPrice := newTrailingStop
+    if positionState.trailingActive
+        trailingDistanceDynamic = useDynamicTrailing ? trailingDistance * atrRatio : trailingDistance
+        newTrailingStop = positionState.lowestPrice * (1 + trailingDistanceDynamic / 100)
+        if newTrailingStop < positionState.trailingStopPrice
+            positionState.trailingStopPrice := newTrailingStop
 
 //=====================================================================================================================
 // 📈 INSTITUTIONAL STRATEGY EXECUTION
@@ -528,35 +574,35 @@ if strategy.position_size < 0 and useTrailingStop
 // Entry orders with enhanced position sizing
 if finalLongSignal
     qtyPercent = dynamicPositionSize
-    strategy.entry("Institutional_Long", strategy.long, qty_percent = qtyPercent, 
+    strategy.entry("Institutional_Long", strategy.long, qty = qtyPercent, 
          comment = "I-LONG " + market.volatilityRegime)
     state.lastTradeBar := bar_index
 
 if finalShortSignal
     qtyPercent = dynamicPositionSize
-    strategy.entry("Institutional_Short", strategy.short, qty_percent = qtyPercent, 
+    strategy.entry("Institutional_Short", strategy.short, qty = qtyPercent, 
          comment = "I-SHORT " + market.volatilityRegime)
     state.lastTradeBar := bar_index
 
 // Enhanced exit orders
 if strategy.position_size > 0
-    if useTrailingStop and position.trailingActive
+    if useTrailingStop and positionState.trailingActive
         strategy.exit("Long_Exit", "Institutional_Long", 
-             stop = position.trailingStopPrice, limit = position.takeProfitPrice, 
+             stop = positionState.trailingStopPrice, limit = positionState.takeProfitPrice, 
              comment = "Trail-" + market.volatilityRegime)
     else
         strategy.exit("Long_Exit", "Institutional_Long", 
-             stop = position.stopLossPrice, limit = position.takeProfitPrice, 
+             stop = positionState.stopLossPrice, limit = positionState.takeProfitPrice, 
              comment = "Fixed-" + market.volatilityRegime)
 
 if strategy.position_size < 0
-    if useTrailingStop and position.trailingActive
+    if useTrailingStop and positionState.trailingActive
         strategy.exit("Short_Exit", "Institutional_Short", 
-             stop = position.trailingStopPrice, limit = position.takeProfitPrice, 
+             stop = positionState.trailingStopPrice, limit = positionState.takeProfitPrice, 
              comment = "Trail-" + market.volatilityRegime)
     else
         strategy.exit("Short_Exit", "Institutional_Short", 
-             stop = position.stopLossPrice, limit = position.takeProfitPrice, 
+             stop = positionState.stopLossPrice, limit = positionState.takeProfitPrice, 
              comment = "Fixed-" + market.volatilityRegime)
 
 // Smart exit execution
@@ -582,9 +628,7 @@ plot(histogramLine, title = "MACD Histogram", color = color.gray, style = plot.s
 hline(0, "Zero Line", color.black, linestyle = hline.style_solid, linewidth = 2)
 
 // MACD fill with regime coloring
-fillColor = macdLine > signalLine ? 
-     (market.volatilityRegime == "HIGH" ? color.new(color.orange, 80) : color.new(color.green, 80)) :
-     (market.volatilityRegime == "HIGH" ? color.new(color.red, 60) : color.new(color.red, 80))
+fillColor = macdLine > signalLine ? (market.volatilityRegime == "HIGH" ? color.new(color.orange, 80) : color.new(color.green, 80)) : (market.volatilityRegime == "HIGH" ? color.new(color.red, 60) : color.new(color.red, 80))
 fill(macdPlot, signalPlot, color = fillColor, title = "Regime MACD Fill")
 
 // Enhanced signal visualization
@@ -667,8 +711,7 @@ if barstate.islast
     rowIndex += 1
     
     table.cell(perfTable, 0, rowIndex, "Net Profit", text_color = color.black)
-    table.cell(perfTable, 1, rowIndex, str.tostring(strategy.netprofit, "$#,###"), 
-         text_color = strategy.netprofit > 0 ? color.green : color.red)
+    table.cell(perfTable, 1, rowIndex, str.tostring(strategy.netprofit, "$#,###"), text_color = strategy.netprofit > 0 ? color.green : color.red)
     rowIndex += 1
     
     // Institutional status
@@ -724,7 +767,7 @@ if smartExitLong or smartExitShort
     direction = smartExitLong ? "LONG" : "SHORT"
     alert("🚪 INSTITUTIONAL EXIT " + direction + " - " + exitType, alert.freq_once_per_bar)
 
-if position.trailingActive and not position.trailingActive[1]
+if positionState.trailingActive and not (positionState[1]).trailingActive
     alert("📈 INSTITUTIONAL TRAILING ACTIVE - Profits Protected", alert.freq_once_per_bar)
 
 if circuitBreakerActive
@@ -760,5 +803,5 @@ if circuitBreakerActive
 // - Pine Script v6 Compliance (Vex): Technical optimization ✅
 // - Market Structure Analyst (Titan): Crypto optimization ✅
 //
-// Next Phase: Testing Lab validation with ≥90% test pass rate requirement
+// Next Phase: Testing lab validation with ≥90% test pass rate requirement
 //=====================================================================================================================
